@@ -3077,6 +3077,11 @@ async function downloadPdf() {
 const style = document.createElement('style');
 style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
 document.head.appendChild(style);
+
+// Auto-descarga cuando se llega desde pdf_download.php
+if (new URLSearchParams(location.search).get('auto') === '1') {
+  window.addEventListener('load', () => setTimeout(downloadPdf, 400));
+}
 </script>
 </body>
 </html>

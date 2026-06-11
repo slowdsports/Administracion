@@ -81,16 +81,11 @@ if ($browser) {
 // ── Verificar resultado ───────────────────────────────────────────
 if (!file_exists($tmpPdf) || filesize($tmpPdf) === 0) {
     @unlink($tmpHtml);
-    $printUrl = BASE_URL . 'print.php?tipo=' . urlencode($tipo) . '&id=' . $id
-              . (!empty($_GET['emp_id']) ? '&emp_id=' . (int)$_GET['emp_id'] : '');
-    http_response_code(500);
-    header('Content-Type: text/html; charset=utf-8');
-    die('<p><strong>Error generando PDF en el servidor.</strong><br>'
-      . 'Motor detectado: ' . ($browser ? htmlspecialchars(basename($browser)) : ($wkhtml ? 'wkhtmltopdf' : 'ninguno')) . '<br>'
-      . 'Exit: ' . $exitCode . '<br>'
-      . htmlspecialchars(implode("\n", $output))
-      . '</p><p><a href="' . htmlspecialchars($printUrl) . '">Abrir versión imprimible</a> '
-      . '(usa Ctrl+P o el botón del navegador para guardar como PDF)</p>');
+    // Sin motor servidor → redirige a print.php que descarga vía html2pdf.js
+    $qs = 'auto=1&tipo=' . urlencode($tipo) . '&id=' . $id
+        . (!empty($_GET['emp_id']) ? '&emp_id=' . (int)$_GET['emp_id'] : '');
+    header('Location: ' . BASE_URL . 'print.php?' . $qs);
+    exit;
 }
 
 // ── Nombre del archivo ────────────────────────────────────────────
