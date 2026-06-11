@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 $cur = basename($_SERVER['PHP_SELF']);
 function sidebarItem(string $file, string $icon, string $label, string $cur, string $badge = ''): string {
     $active = ($cur === $file) ? 'active' : '';
     $b = $badge ? "<span class=\"badge-count\">{$badge}</span>" : '';
-    return "<a href=\"/Administracion/{$file}\" class=\"sidebar-item {$active}\" data-page=\"{$file}\">
+    return "<a href=\"" . BASE_URL . "{$file}\\" class=\"sidebar-item {$active}\" data-page=\"{$file}\">
         <i class=\"fas {$icon}\"></i> {$label}{$b}
     </a>";
 }

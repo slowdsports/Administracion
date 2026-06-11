@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -175,17 +175,17 @@ $empClass = $balEmp > 0 ? '#d97706' : ($balEmp < 0 ? '#16a34a' : '#64748b');
             <div style="font-size:.65rem;font-weight:400"><?= $balLabel ?></div>
           </td>
           <td>
-            <a href="/Administracion/gastos_viajes.php?action=ver&id=<?= $v['gv_id'] ?>"
+            <a href="<?= BASE_URL ?>gastos_viajes.php?action=ver&id=<?= $v['gv_id'] ?>"
                class="btn btn-sm btn-outline-primary py-0 px-2" title="Ver anticipo">
               <i class="fas fa-eye"></i>
             </a>
             <?php if ($v['num_liquidaciones'] > 0): ?>
-            <a href="/Administracion/gastos_solicitud.php?viaje_id=<?= $v['gv_id'] ?>"
+            <a href="<?= BASE_URL ?>gastos_solicitud.php?viaje_id=<?= $v['gv_id'] ?>"
                class="btn btn-sm btn-outline-secondary py-0 px-2 ms-1" title="Ver liquidación">
               <i class="fas fa-file-invoice-dollar"></i>
             </a>
             <?php else: ?>
-            <a href="/Administracion/gastos_solicitud.php?action=nuevo&viaje_id=<?= $v['gv_id'] ?>"
+            <a href="<?= BASE_URL ?>gastos_solicitud.php?action=nuevo&viaje_id=<?= $v['gv_id'] ?>"
                class="btn btn-sm btn-outline-success py-0 px-2 ms-1" title="Registrar liquidación">
               <i class="fas fa-plus"></i>
             </a>

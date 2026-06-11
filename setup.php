@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * AHDECO - Instalador del Sistema
  * Accede a: http://localhost/Administracion/setup.php
@@ -70,12 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
 <title>AHDECO - Instalación del Sistema</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<link rel="stylesheet" href="/Administracion/assets/css/ahdeco.css">
+<link rel="stylesheet" href="<?= BASE_URL ?>assets/css/ahdeco.css">
 </head>
 <body class="bg-light">
 <div class="container py-5" style="max-width:680px">
   <div class="text-center mb-4">
-    <img src="/Administracion/assets/images/logo2aa.png" alt="AHDECO" style="height:60px;margin-bottom:1rem;">
+    <img src="<?= BASE_URL ?>assets/images/logo2aa.png" alt="AHDECO" style="height:60px;margin-bottom:1rem;">
     <h3 style="color:#0D2B4E">Instalación del Sistema</h3>
     <p class="text-muted">AHDECO — Sistema de Administración y Finanzas</p>
   </div>
@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 2) {
         <i class="fas fa-exclamation-triangle"></i>
         <strong>IMPORTANTE:</strong> Por seguridad, elimina el archivo <code>setup.php</code> del servidor.
       </div>
-      <a href="/Administracion/index.php" class="btn-ahdeco" style="padding:.65rem 1.5rem;">
+      <a href="<?= BASE_URL ?>index.php" class="btn-ahdeco" style="padding:.65rem 1.5rem;">
         <i class="fas fa-sign-in-alt"></i> Ir al Sistema
       </a>
     </div>

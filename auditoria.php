@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
 requireLogin();
-if (!hasRole(['admin'])) { header('Location: /Administracion/dashboard.php'); exit; }
+if (!hasRole(['admin'])) { header('Location: ' . BASE_URL . 'dashboard.php'); exit; }
 
 $pagina = 'Registro de Auditoría';
 
@@ -115,7 +115,7 @@ include __DIR__ . '/includes/header.php';
   ];
   foreach ($sts as [$icon, $label, $color, $val, $href]): ?>
   <div class="col-6 col-md-2">
-    <a href="/Administracion/<?= $href ?>" class="kpi-card <?= $color ?>">
+    <a href="<?= BASE_URL . $href ?>" class="kpi-card <?= $color ?>">
       <div class="kpi-icon"><i class="fas <?= $icon ?>"></i></div>
       <div class="kpi-value"><?= number_format($val) ?></div>
       <div class="kpi-label"><?= $label ?></div>

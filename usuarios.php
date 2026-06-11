@@ -3,7 +3,7 @@ require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
 requireLogin();
-if (!hasRole(['admin'])) { header('Location: /Administracion/dashboard.php'); exit; }
+if (!hasRole(['admin'])) { header('Location: ' . BASE_URL . 'dashboard.php'); exit; }
 $pagina = 'Usuarios del Sistema';
 
 if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 if (!defined('BASE_URL')) {
     $docRoot = rtrim(str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT'])), '/');
     $appRoot  = rtrim(str_replace('\\', '/', realpath(dirname(__DIR__))), '/');
@@ -16,7 +16,7 @@ if (!isset($_SESSION['usuario_foto']) && isset($_SESSION['usuario_id'])) {
 }
 $user = currentUser();
 
-$_avatarFoto = $user['foto'] ? '/Administracion/' . $user['foto'] : '';
+$_avatarFoto = $user['foto'] ? BASE_URL . $user['foto'] : '';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -52,9 +52,9 @@ $_avatarFoto = $user['foto'] ? '/Administracion/' . $user['foto'] : '';
   </div>
   <span class="topbar-title">Sistema de Administración y Finanzas</span>
   <div class="topbar-right">
-    <a href="/Administracion/perfil.php" class="topbar-user d-none d-md-flex" style="text-decoration:none;color:inherit">
+    <a href="<?= BASE_URL ?>perfil.php" class="topbar-user d-none d-md-flex" style="text-decoration:none;color:inherit">
       <div class="avatar" style="background:none;padding:0;overflow:hidden;flex-shrink:0">
-        <img src="<?= $_avatarFoto ?: '/Administracion/assets/images/logo2.png' ?>"
+        <img src="<?= $_avatarFoto ?: BASE_URL . 'assets/images/logo2.png' ?>"
              alt=""
              style="width:27px;height:27px;object-fit:cover;border-radius:50%;display:block;">
       </div>

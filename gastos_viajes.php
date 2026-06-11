@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -146,7 +146,7 @@ include __DIR__ . '/includes/header.php';
       <?php elseif ($gv['estado']==='aprobada'): ?>
       <button class="btn btn-sm btn-info text-white" onclick="cambiarEstado('gastos_viajes.php',<?=$gv['id']?>,'liquidada','gastos_viaje',()=>location.reload())"><i class="fas fa-check-double"></i> Liquidar</button>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=gv&id=<?= $gv['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=gv&id=<?= $gv['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
   </div>
   <div class="card-body">
@@ -195,7 +195,7 @@ include __DIR__ . '/includes/header.php';
 <div class="card mt-3">
   <div class="card-header">
     <i class="fas fa-file-invoice-dollar"></i> Liquidaciones / Solicitudes de Gastos Vinculadas
-    <a href="/Administracion/gastos_solicitud.php?action=nuevo&viaje_id=<?= $gv['id'] ?>" class="ms-auto btn btn-sm btn-outline-success py-0"><i class="fas fa-plus"></i> Nueva Liquidación</a>
+    <a href="<?= BASE_URL ?>gastos_solicitud.php?action=nuevo&viaje_id=<?= $gv['id'] ?>" class="ms-auto btn btn-sm btn-outline-success py-0"><i class="fas fa-plus"></i> Nueva Liquidación</a>
   </div>
   <div class="card-body p-0">
     <table class="table-ahdeco w-100">
@@ -208,7 +208,7 @@ include __DIR__ . '/includes/header.php';
           <td><?= htmlspecialchars(substr($liq['descripcion'],0,60)) ?></td>
           <td class="font-mono"><?= lps($liq['monto_total']) ?></td>
           <td><?= estadoBadge($liq['estado']) ?></td>
-          <td><a href="/Administracion/gastos_solicitud.php?action=ver&id=<?= $liq['id'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="fas fa-eye"></i></a></td>
+          <td><a href="<?= BASE_URL ?>gastos_solicitud.php?action=ver&id=<?= $liq['id'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="fas fa-eye"></i></a></td>
         </tr>
         <?php endforeach; ?>
       </tbody>
@@ -219,7 +219,7 @@ include __DIR__ . '/includes/header.php';
 <div class="card mt-3">
   <div class="card-body d-flex align-items-center justify-content-between" style="font-size:.85rem;">
     <span class="text-muted"><i class="fas fa-info-circle me-1"></i> Sin liquidaciones registradas para este viaje.</span>
-    <a href="/Administracion/gastos_solicitud.php?action=nuevo&viaje_id=<?= $gv['id'] ?>" class="btn btn-sm btn-outline-success"><i class="fas fa-plus"></i> Registrar Liquidación</a>
+    <a href="<?= BASE_URL ?>gastos_solicitud.php?action=nuevo&viaje_id=<?= $gv['id'] ?>" class="btn btn-sm btn-outline-success"><i class="fas fa-plus"></i> Registrar Liquidación</a>
   </div>
 </div>
 <?php endif; ?>

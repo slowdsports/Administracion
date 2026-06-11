@@ -101,11 +101,11 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div class="workflow-steps mb-3">
-  <a href="/Administracion/compras_solicitud.php" class="wf-step done"><i class="fas fa-cart-plus"></i><span>Solicitud de Compra</span></a>
-  <a href="/Administracion/compras_cotizaciones.php" class="wf-step done"><i class="fas fa-file-lines"></i><span>Cotizaciones</span></a>
-  <a href="/Administracion/compras_orden.php" class="wf-step done"><i class="fas fa-file-circle-check"></i><span>Orden de Compra</span></a>
+  <a href="<?= BASE_URL ?>compras_solicitud.php" class="wf-step done"><i class="fas fa-cart-plus"></i><span>Solicitud de Compra</span></a>
+  <a href="<?= BASE_URL ?>compras_cotizaciones.php" class="wf-step done"><i class="fas fa-file-lines"></i><span>Cotizaciones</span></a>
+  <a href="<?= BASE_URL ?>compras_orden.php" class="wf-step done"><i class="fas fa-file-circle-check"></i><span>Orden de Compra</span></a>
   <div class="wf-step active"><i class="fas fa-money-bill-transfer"></i><span>Orden de Pago</span></div>
-  <a href="/Administracion/compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de RecepciÃ³n</span></a>
+  <a href="<?= BASE_URL ?>compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de RecepciÃ³n</span></a>
 </div>
 
 <div class="page-header">
@@ -151,7 +151,7 @@ include __DIR__ . '/includes/header.php';
 <!-- Cadena de proceso -->
 <div class="trace-chain">
   <?php if($traza['sc']): ?>
-  <a href="/Administracion/compras_solicitud.php?action=ver&id=<?= $traza['sc']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_solicitud.php?action=ver&id=<?= $traza['sc']['id'] ?>" class="trace-step linked">
     <i class="fas fa-cart-plus"></i>
     <span class="trace-step-label">Solicitud</span>
     <span class="trace-step-num"><?= $traza['sc']['numero'] ?></span>
@@ -165,7 +165,7 @@ include __DIR__ . '/includes/header.php';
   </div>
   <?php endif; ?>
   <?php if($traza['co']): ?>
-  <a href="/Administracion/compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>" class="trace-step linked">
     <i class="fas fa-file-lines"></i>
     <span class="trace-step-label">CotizaciÃ³n</span>
     <span class="trace-step-num"><?= $traza['co']['numero'] ?></span>
@@ -179,7 +179,7 @@ include __DIR__ . '/includes/header.php';
   </div>
   <?php endif; ?>
   <?php if($traza['oc']): ?>
-  <a href="/Administracion/compras_orden.php?action=ver&id=<?= $traza['oc']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_orden.php?action=ver&id=<?= $traza['oc']['id'] ?>" class="trace-step linked">
     <i class="fas fa-file-circle-check"></i>
     <span class="trace-step-label">Orden de Compra</span>
     <span class="trace-step-num"><?= $traza['oc']['numero'] ?></span>
@@ -210,9 +210,9 @@ include __DIR__ . '/includes/header.php';
       <?php elseif($op['estado']==='aprobada'): ?>
       <button class="btn btn-sm btn-info text-white" onclick="cambiarEstado('compras_pago.php',<?=$op['id']?>,'pagada','ordenes_pago',()=>location.reload())"><i class="fas fa-money-bill"></i> Pagar</button>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=op&id=<?= $op['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=op&id=<?= $op['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
       <?php if ($traza['sc']): ?>
-      <a href="/Administracion/print.php?tipo=proceso&id=<?= $traza['sc']['id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="fas fa-layer-group"></i> Proceso Completo</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=proceso&id=<?= $traza['sc']['id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="fas fa-layer-group"></i> Proceso Completo</a>
       <?php endif; ?>
     </div>
   </div>

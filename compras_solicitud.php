@@ -82,10 +82,10 @@ include __DIR__ . '/includes/header.php';
 <!-- Workflow indicator -->
 <div class="workflow-steps mb-3">
   <div class="wf-step active"><i class="fas fa-cart-plus"></i><span>Solicitud de Compra</span></div>
-  <a href="/Administracion/compras_cotizaciones.php" class="wf-step"><i class="fas fa-file-lines"></i><span>Cotizaciones</span></a>
-  <a href="/Administracion/compras_orden.php" class="wf-step"><i class="fas fa-file-circle-check"></i><span>Orden de Compra</span></a>
-  <a href="/Administracion/compras_pago.php" class="wf-step"><i class="fas fa-money-bill-transfer"></i><span>Orden de Pago</span></a>
-  <a href="/Administracion/compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de RecepciÃ³n</span></a>
+  <a href="<?= BASE_URL ?>compras_cotizaciones.php" class="wf-step"><i class="fas fa-file-lines"></i><span>Cotizaciones</span></a>
+  <a href="<?= BASE_URL ?>compras_orden.php" class="wf-step"><i class="fas fa-file-circle-check"></i><span>Orden de Compra</span></a>
+  <a href="<?= BASE_URL ?>compras_pago.php" class="wf-step"><i class="fas fa-money-bill-transfer"></i><span>Orden de Pago</span></a>
+  <a href="<?= BASE_URL ?>compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de RecepciÃ³n</span></a>
 </div>
 
 <div class="page-header">
@@ -137,7 +137,7 @@ include __DIR__ . '/includes/header.php';
     <span class="trace-step-badge"><?= estadoBadge($sc['estado']) ?></span>
   </div>
   <?php if($traza['co']): ?>
-  <a href="/Administracion/compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>" class="trace-step linked">
     <i class="fas fa-file-lines"></i>
     <span class="trace-step-label">CotizaciÃ³n</span>
     <span class="trace-step-num"><?= $traza['co']['numero'] ?></span>
@@ -151,7 +151,7 @@ include __DIR__ . '/includes/header.php';
   </div>
   <?php endif; ?>
   <?php if($traza['oc']): ?>
-  <a href="/Administracion/compras_orden.php?action=ver&id=<?= $traza['oc']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_orden.php?action=ver&id=<?= $traza['oc']['id'] ?>" class="trace-step linked">
     <i class="fas fa-file-circle-check"></i>
     <span class="trace-step-label">Orden de Compra</span>
     <span class="trace-step-num"><?= $traza['oc']['numero'] ?></span>
@@ -165,7 +165,7 @@ include __DIR__ . '/includes/header.php';
   </div>
   <?php endif; ?>
   <?php if($traza['op']): ?>
-  <a href="/Administracion/compras_pago.php?action=ver&id=<?= $traza['op']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_pago.php?action=ver&id=<?= $traza['op']['id'] ?>" class="trace-step linked">
     <i class="fas fa-money-bill-transfer"></i>
     <span class="trace-step-label">Orden de Pago</span>
     <span class="trace-step-num"><?= $traza['op']['numero'] ?></span>
@@ -190,12 +190,12 @@ include __DIR__ . '/includes/header.php';
       <button class="btn btn-sm btn-danger"  onclick="cambiarEstado('compras_solicitud.php',<?=$sc['id']?>,'rechazada','solicitud_compra',()=>location.reload())"><i class="fas fa-times"></i> Rechazar</button>
       <?php endif; ?>
       <?php if(in_array($sc['estado'],['aprobada','cotizando'])): ?>
-      <a href="/Administracion/compras_cotizaciones.php?action=nuevo&sc_id=<?= $sc['id'] ?>" class="btn btn-sm btn-primary">
+      <a href="<?= BASE_URL ?>compras_cotizaciones.php?action=nuevo&sc_id=<?= $sc['id'] ?>" class="btn btn-sm btn-primary">
         <i class="fas fa-file-lines"></i> Crear CotizaciÃ³n
       </a>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=sc&id=<?= $sc['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
-      <a href="/Administracion/print.php?tipo=proceso&id=<?= $sc['id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="fas fa-layer-group"></i> Proceso Completo</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=sc&id=<?= $sc['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=proceso&id=<?= $sc['id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="fas fa-layer-group"></i> Proceso Completo</a>
     </div>
   </div>
   <div class="card-body">

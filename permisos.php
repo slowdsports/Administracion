@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -186,7 +186,7 @@ include __DIR__ . '/includes/header.php';
       <button class="btn btn-sm btn-success" onclick="cambiarEstPer(<?= $id ?>,'aprobado')"><i class="fas fa-check"></i> Aprobar</button>
       <button class="btn btn-sm btn-danger"  onclick="cambiarEstPer(<?= $id ?>,'rechazado')"><i class="fas fa-times"></i> Rechazar</button>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=per&id=<?= $id ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=per&id=<?= $id ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
   </div>
   <div class="card-body">

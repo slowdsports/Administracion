@@ -1,7 +1,8 @@
-<?php
+﻿<?php
 session_start();
+require_once __DIR__ . '/config/functions.php';
 if (isset($_SESSION['usuario_id'])) {
-    header('Location: /Administracion/dashboard.php');
+    header('Location: ' . BASE_URL . 'dashboard.php');
     exit;
 }
 
@@ -26,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['usuario_foto']   = $u['foto'] ?? '';
 
             $pdo->prepare("UPDATE usuarios SET ultimo_acceso = NOW() WHERE id = ?")->execute([$u['id']]);
-            header('Location: /Administracion/dashboard.php');
+            header('Location: ' . BASE_URL . 'dashboard.php');
             exit;
         } else {
             $error = 'Correo o contraseña incorrectos.';
@@ -44,12 +45,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <title>AHDECO - Iniciar Sesión</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="/Administracion/assets/css/ahdeco.css">
+  <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/ahdeco.css">
 </head>
 <body>
 <div class="login-wrapper">
   <div class="login-card">
-    <img src="/Administracion/assets/images/logo2aa.png" alt="AHDECO" class="logo mb-2" style="height:70px;">
+    <img src="<?= BASE_URL ?>assets/images/logo2aa.png" alt="AHDECO" class="logo mb-2" style="height:70px;">
     <p class="org-name">AHDECO</p>
     <p class="text-muted" style="font-size:.78rem;margin-bottom:1.5rem;">
       Asociación Hondureña para el Desarrollo Integral Comunitario<br>

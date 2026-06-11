@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -138,7 +138,7 @@ include __DIR__ . '/includes/header.php';
 
 <?php if ($viaje_link): ?>
 <div class="trace-chain mb-3">
-  <a href="/Administracion/gastos_viajes.php?action=ver&id=<?= $viaje_link['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>gastos_viajes.php?action=ver&id=<?= $viaje_link['id'] ?>" class="trace-step linked">
     <i class="fas fa-plane-departure"></i>
     <span class="trace-step-label">Anticipo de Viaje</span>
     <span class="trace-step-num"><?= $viaje_link['numero'] ?></span>
@@ -170,7 +170,7 @@ include __DIR__ . '/includes/header.php';
         <i class="fas fa-money-bill"></i> Pagar
       </button>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=sg&id=<?= $sg['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=sg&id=<?= $sg['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
   </div>
   <div class="card-body">

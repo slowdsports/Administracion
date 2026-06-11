@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -279,17 +279,17 @@ include __DIR__ . '/includes/header.php';
           <i class="fas fa-money-bill"></i> Marcar Pagada
         </button>
         <?php endif; ?>
-        <a href="/Administracion/print.php?tipo=pl&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger">
+        <a href="<?= BASE_URL ?>print.php?tipo=pl&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger">
           <i class="fas fa-file-pdf"></i> PDF
         </a>
-        <a href="/Administracion/print.php?tipo=plc&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-warning">
+        <a href="<?= BASE_URL ?>print.php?tipo=plc&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-warning">
           <i class="fas fa-credit-card"></i> Credimpulsa
         </a>
-        <a href="/Administracion/planillas.php?action=export_credimpulsa&id=<?= $periodo['id'] ?>" class="btn btn-sm btn-outline-success">
+        <a href="<?= BASE_URL ?>planillas.php?action=export_credimpulsa&id=<?= $periodo['id'] ?>" class="btn btn-sm btn-outline-success">
           <i class="fas fa-file-excel"></i> Excel
         </a>
         <?php if (in_array($periodo['estado'], ['aprobada','pagada'])): ?>
-        <a href="/Administracion/print.php?tipo=plv&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary">
+        <a href="<?= BASE_URL ?>print.php?tipo=plv&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary">
           <i class="fas fa-file-zipper"></i> Vouchers
         </a>
         <?php endif; ?>
@@ -324,7 +324,7 @@ include __DIR__ . '/includes/header.php';
             <td><?= $i++ ?></td>
             <td>
               <?= htmlspecialchars($d['empleado_nombre']) ?>
-              <a href="/Administracion/pdf_download.php?tipo=plv&id=<?= $periodo['id'] ?>&emp_id=<?= $d['empleado_id'] ?>"
+              <a href="<?= BASE_URL ?>pdf_download.php?tipo=plv&id=<?= $periodo['id'] ?>&emp_id=<?= $d['empleado_id'] ?>"
                  target="_blank" title="Descargar voucher PDF" class="ms-1" style="color:var(--text-2);font-size:.75rem">
                 <i class="fas fa-file-pdf"></i>
               </a>

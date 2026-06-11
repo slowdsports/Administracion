@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -144,7 +144,7 @@ include __DIR__ . '/includes/header.php';
         <i class="fas fa-check-circle"></i> Aprobar
       </button>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=acta&id=<?= $id ?>" target="_blank"
+      <a href="<?= BASE_URL ?>print.php?tipo=acta&id=<?= $id ?>" target="_blank"
          class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
   </div>

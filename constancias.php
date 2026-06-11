@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -54,7 +54,7 @@ include __DIR__ . '/includes/header.php';
     <div class="card h-100">
       <div class="card-header"><i class="fas fa-cog"></i> Configurar documento</div>
       <div class="card-body">
-        <form id="form-constancia" target="_blank" method="GET" action="/Administracion/print.php">
+        <form id="form-constancia" target="_blank" method="GET" action="<?= BASE_URL ?>print.php">
           <input type="hidden" name="tipo" id="input-tipo" value="">
 
           <div class="mb-3">

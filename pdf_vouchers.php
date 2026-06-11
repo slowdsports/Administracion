@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Redirige a pdf_download.php que usa Edge --print-to-pdf (texto seleccionable, gradientes incluidos)
 $tipo   = $_GET['tipo'] ?? '';
 $id     = (int)($_GET['id'] ?? 0);
@@ -10,5 +10,5 @@ $params = http_build_query(array_filter([
     'emp_id' => $empId ?: null,
 ]));
 
-header('Location: /Administracion/pdf_download.php?' . $params);
+header('Location: ' . BASE_URL . 'pdf_download.php?' . $params);
 exit;

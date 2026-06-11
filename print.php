@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -899,13 +899,13 @@ table.items tfoot tr:last-child td {
   <button class="btn-print secondary" onclick="window.close()">✕ Cerrar</button>
   <?php if (in_array($tipo, ['plv','pav','pbv']) && isset($_GET['emp_id'])): ?>
   <a class="btn-print primary" id="btn-download"
-     href="/Administracion/pdf_download.php?tipo=<?= urlencode($tipo) ?>&id=<?= $id ?>&emp_id=<?= (int)$_GET['emp_id'] ?>">
+     href="<?= BASE_URL ?>pdf_download.php?tipo=<?= urlencode($tipo) ?>&id=<?= $id ?>&emp_id=<?= (int)$_GET['emp_id'] ?>">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
     Descargar PDF
   </a>
   <?php else: ?>
   <a class="btn-print primary" id="btn-download"
-     href="/Administracion/pdf_download.php?tipo=<?= urlencode($tipo) ?>&id=<?= $id ?>">
+     href="<?= BASE_URL ?>pdf_download.php?tipo=<?= urlencode($tipo) ?>&id=<?= $id ?>">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
     Descargar PDF
   </a>
@@ -3014,7 +3014,7 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
 
 <?php endif; /* not proceso */ ?>
 
-<script src="/Administracion/assets/js/html2pdf.bundle.min.js"></script>
+<script src="<?= BASE_URL ?>assets/js/html2pdf.bundle.min.js"></script>
 <script>
 <?php
 $orientation = in_array($tipo, ['pl','pb']) ? 'landscape' : 'portrait';

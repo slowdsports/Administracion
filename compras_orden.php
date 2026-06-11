@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -108,11 +108,11 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div class="workflow-steps mb-3">
-  <a href="/Administracion/compras_solicitud.php" class="wf-step done"><i class="fas fa-cart-plus"></i><span>Solicitud de Compra</span></a>
-  <a href="/Administracion/compras_cotizaciones.php" class="wf-step done"><i class="fas fa-file-lines"></i><span>Cotizaciones</span></a>
+  <a href="<?= BASE_URL ?>compras_solicitud.php" class="wf-step done"><i class="fas fa-cart-plus"></i><span>Solicitud de Compra</span></a>
+  <a href="<?= BASE_URL ?>compras_cotizaciones.php" class="wf-step done"><i class="fas fa-file-lines"></i><span>Cotizaciones</span></a>
   <div class="wf-step active"><i class="fas fa-file-circle-check"></i><span>Orden de Compra</span></div>
-  <a href="/Administracion/compras_pago.php" class="wf-step"><i class="fas fa-money-bill-transfer"></i><span>Orden de Pago</span></a>
-  <a href="/Administracion/compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de Recepción</span></a>
+  <a href="<?= BASE_URL ?>compras_pago.php" class="wf-step"><i class="fas fa-money-bill-transfer"></i><span>Orden de Pago</span></a>
+  <a href="<?= BASE_URL ?>compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de Recepción</span></a>
 </div>
 
 <div class="page-header">
@@ -140,8 +140,8 @@ include __DIR__ . '/includes/header.php';
         <td>
           <a href="?action=ver&id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="fas fa-eye"></i></a>
           <?php if($r['estado']==='emitida'): ?>
-          <a href="/Administracion/compras_pago.php?action=nuevo&oc_id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-success py-0 px-2 ms-1" title="Crear Orden de Pago"><i class="fas fa-money-bill"></i></a>
-          <a href="/Administracion/compras_recepcion.php?action=nuevo&oc_id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-info py-0 px-2 ms-1" title="Nota de Recepción"><i class="fas fa-boxes-stacked"></i></a>
+          <a href="<?= BASE_URL ?>compras_pago.php?action=nuevo&oc_id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-success py-0 px-2 ms-1" title="Crear Orden de Pago"><i class="fas fa-money-bill"></i></a>
+          <a href="<?= BASE_URL ?>compras_recepcion.php?action=nuevo&oc_id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-info py-0 px-2 ms-1" title="Nota de Recepción"><i class="fas fa-boxes-stacked"></i></a>
           <?php endif; ?>
         </td>
       </tr>
@@ -156,7 +156,7 @@ include __DIR__ . '/includes/header.php';
 <!-- Cadena de proceso -->
 <div class="trace-chain">
   <?php if($traza['sc']): ?>
-  <a href="/Administracion/compras_solicitud.php?action=ver&id=<?= $traza['sc']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_solicitud.php?action=ver&id=<?= $traza['sc']['id'] ?>" class="trace-step linked">
     <i class="fas fa-cart-plus"></i>
     <span class="trace-step-label">Solicitud</span>
     <span class="trace-step-num"><?= $traza['sc']['numero'] ?></span>
@@ -170,7 +170,7 @@ include __DIR__ . '/includes/header.php';
   </div>
   <?php endif; ?>
   <?php if($traza['co']): ?>
-  <a href="/Administracion/compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>" class="trace-step linked">
     <i class="fas fa-file-lines"></i>
     <span class="trace-step-label">Cotización</span>
     <span class="trace-step-num"><?= $traza['co']['numero'] ?></span>
@@ -190,7 +190,7 @@ include __DIR__ . '/includes/header.php';
     <span class="trace-step-badge"><?= estadoBadge($oc['estado']) ?></span>
   </div>
   <?php if($traza['op']): ?>
-  <a href="/Administracion/compras_pago.php?action=ver&id=<?= $traza['op']['id'] ?>" class="trace-step linked">
+  <a href="<?= BASE_URL ?>compras_pago.php?action=ver&id=<?= $traza['op']['id'] ?>" class="trace-step linked">
     <i class="fas fa-money-bill-transfer"></i>
     <span class="trace-step-label">Orden de Pago</span>
     <span class="trace-step-num"><?= $traza['op']['numero'] ?></span>
@@ -211,12 +211,12 @@ include __DIR__ . '/includes/header.php';
     <i class="fas fa-file-circle-check"></i> ORDEN DE COMPRA <?= $oc['numero'] ?> — <?= estadoBadge($oc['estado']) ?>
     <div class="ms-auto d-flex gap-2 no-print">
       <?php if($oc['estado']==='emitida'): ?>
-      <a href="/Administracion/compras_pago.php?action=nuevo&oc_id=<?= $oc['id'] ?>" class="btn btn-sm btn-success"><i class="fas fa-money-bill"></i> Generar OP</a>
-      <a href="/Administracion/compras_recepcion.php?action=nuevo&oc_id=<?= $oc['id'] ?>" class="btn btn-sm btn-info text-white"><i class="fas fa-boxes-stacked"></i> Nota Recepción</a>
+      <a href="<?= BASE_URL ?>compras_pago.php?action=nuevo&oc_id=<?= $oc['id'] ?>" class="btn btn-sm btn-success"><i class="fas fa-money-bill"></i> Generar OP</a>
+      <a href="<?= BASE_URL ?>compras_recepcion.php?action=nuevo&oc_id=<?= $oc['id'] ?>" class="btn btn-sm btn-info text-white"><i class="fas fa-boxes-stacked"></i> Nota Recepción</a>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=oc&id=<?= $oc['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=oc&id=<?= $oc['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
       <?php if ($oc['solicitud_id']): ?>
-      <a href="/Administracion/print.php?tipo=proceso&id=<?= $oc['solicitud_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="fas fa-layer-group"></i> Proceso Completo</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=proceso&id=<?= $oc['solicitud_id'] ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="fas fa-layer-group"></i> Proceso Completo</a>
       <?php endif; ?>
     </div>
   </div>

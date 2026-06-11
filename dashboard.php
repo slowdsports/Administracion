@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -74,42 +74,42 @@ include __DIR__ . '/includes/header.php';
 <!-- ── Fila 1: contadores pendientes ── -->
 <div class="row g-3 mb-3">
   <div class="col-6 col-md-4 col-xl-2">
-    <a href="/Administracion/empleados.php" class="kpi-card kpi-blue">
+    <a href="<?= BASE_URL ?>empleados.php" class="kpi-card kpi-blue">
       <div class="kpi-icon"><i class="fas fa-users"></i></div>
       <div class="kpi-value"><?= $stats['empleados'] ?></div>
       <div class="kpi-label">Empleados Activos</div>
     </a>
   </div>
   <div class="col-6 col-md-4 col-xl-2">
-    <a href="/Administracion/gastos_solicitud.php?estado=pendiente" class="kpi-card kpi-yellow">
+    <a href="<?= BASE_URL ?>gastos_solicitud.php?estado=pendiente" class="kpi-card kpi-yellow">
       <div class="kpi-icon"><i class="fas fa-file-invoice-dollar"></i></div>
       <div class="kpi-value"><?= $stats['gastos_pendientes'] ?></div>
       <div class="kpi-label">Gastos Pendientes</div>
     </a>
   </div>
   <div class="col-6 col-md-4 col-xl-2">
-    <a href="/Administracion/gastos_viajes.php?estado=pendiente" class="kpi-card kpi-teal">
+    <a href="<?= BASE_URL ?>gastos_viajes.php?estado=pendiente" class="kpi-card kpi-teal">
       <div class="kpi-icon"><i class="fas fa-plane-departure"></i></div>
       <div class="kpi-value"><?= $stats['viajes_pendientes'] ?></div>
       <div class="kpi-label">Viajes Pendientes</div>
     </a>
   </div>
   <div class="col-6 col-md-4 col-xl-2">
-    <a href="/Administracion/compras_solicitud.php?estado=pendiente" class="kpi-card kpi-red">
+    <a href="<?= BASE_URL ?>compras_solicitud.php?estado=pendiente" class="kpi-card kpi-red">
       <div class="kpi-icon"><i class="fas fa-cart-plus"></i></div>
       <div class="kpi-value"><?= $stats['sc_pendientes'] ?></div>
       <div class="kpi-label">SC Pendientes</div>
     </a>
   </div>
   <div class="col-6 col-md-4 col-xl-2">
-    <a href="/Administracion/compras_pago.php?estado=pendiente" class="kpi-card kpi-purple">
+    <a href="<?= BASE_URL ?>compras_pago.php?estado=pendiente" class="kpi-card kpi-purple">
       <div class="kpi-icon"><i class="fas fa-money-bill-transfer"></i></div>
       <div class="kpi-value"><?= $stats['op_pendientes'] ?></div>
       <div class="kpi-label">OP Pendientes</div>
     </a>
   </div>
   <div class="col-6 col-md-4 col-xl-2">
-    <a href="/Administracion/proyectos.php?estado=activo" class="kpi-card kpi-green">
+    <a href="<?= BASE_URL ?>proyectos.php?estado=activo" class="kpi-card kpi-green">
       <div class="kpi-icon"><i class="fas fa-diagram-project"></i></div>
       <div class="kpi-value"><?= $stats['proyectos_activos'] ?></div>
       <div class="kpi-label">Proyectos Activos</div>
@@ -120,21 +120,21 @@ include __DIR__ . '/includes/header.php';
 <!-- ── Fila 2: resumen financiero del mes ── -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
-    <a href="/Administracion/gastos_solicitud.php" class="kpi-card kpi-red kpi-sm">
+    <a href="<?= BASE_URL ?>gastos_solicitud.php" class="kpi-card kpi-red kpi-sm">
       <div class="kpi-icon"><i class="fas fa-file-invoice-dollar"></i></div>
       <div class="kpi-value"><?= lps($stats['gastos_mes']) ?></div>
       <div class="kpi-label">Gastos del Mes</div>
     </a>
   </div>
   <div class="col-6 col-md-3">
-    <a href="/Administracion/compras_pago.php" class="kpi-card kpi-blue kpi-sm">
+    <a href="<?= BASE_URL ?>compras_pago.php" class="kpi-card kpi-blue kpi-sm">
       <div class="kpi-icon"><i class="fas fa-money-bill-wave"></i></div>
       <div class="kpi-value"><?= lps($stats['pagos_mes']) ?></div>
       <div class="kpi-label">Pagos del Mes</div>
     </a>
   </div>
   <div class="col-6 col-md-3">
-    <a href="/Administracion/prestamos.php" class="kpi-card kpi-yellow kpi-sm">
+    <a href="<?= BASE_URL ?>prestamos.php" class="kpi-card kpi-yellow kpi-sm">
       <div class="kpi-icon"><i class="fas fa-hand-holding-dollar"></i></div>
       <div class="kpi-value"><?= lps($stats['prest_saldo']) ?></div>
       <div class="kpi-label">Préstamos por Cobrar</div>
@@ -142,13 +142,13 @@ include __DIR__ . '/includes/header.php';
   </div>
   <div class="col-6 col-md-3">
     <?php if ($ult_pl): ?>
-    <a href="/Administracion/planillas.php" class="kpi-card kpi-<?= $ult_pl['estado'] === 'pagada' ? 'green' : 'teal' ?> kpi-sm">
+    <a href="<?= BASE_URL ?>planillas.php" class="kpi-card kpi-<?= $ult_pl['estado'] === 'pagada' ? 'green' : 'teal' ?> kpi-sm">
       <div class="kpi-icon"><i class="fas fa-money-check-dollar"></i></div>
       <div class="kpi-value"><?= lps($ult_pl['total_neto']) ?></div>
       <div class="kpi-label">Última Planilla Neta</div>
     </a>
     <?php else: ?>
-    <a href="/Administracion/planillas.php" class="kpi-card kpi-gray kpi-sm">
+    <a href="<?= BASE_URL ?>planillas.php" class="kpi-card kpi-gray kpi-sm">
       <div class="kpi-icon"><i class="fas fa-money-check-dollar"></i></div>
       <div class="kpi-value">—</div>
       <div class="kpi-label">Sin Planilla</div>
@@ -203,7 +203,7 @@ include __DIR__ . '/includes/header.php';
     <div class="card">
       <div class="card-header">
         <i class="fas fa-cart-plus"></i> Solicitudes de Compra Recientes
-        <a href="/Administracion/compras_solicitud.php" class="ms-auto" style="font-size:.76rem">Ver todas</a>
+        <a href="<?= BASE_URL ?>compras_solicitud.php" class="ms-auto" style="font-size:.76rem">Ver todas</a>
       </div>
       <div class="card-body p-0">
         <table class="table-ahdeco w-100">
@@ -211,7 +211,7 @@ include __DIR__ . '/includes/header.php';
           <tbody>
             <?php foreach ($compras_recientes as $r): ?>
             <tr>
-              <td class="font-mono"><a href="/Administracion/compras_solicitud.php?action=ver&id=<?= $r['numero'] ?>"><?= $r['numero'] ?></a></td>
+              <td class="font-mono"><a href="<?= BASE_URL ?>compras_solicitud.php?action=ver&id=<?= $r['numero'] ?>"><?= $r['numero'] ?></a></td>
               <td><?= htmlspecialchars($r['solicitante']) ?></td>
               <td><?= estadoBadge($r['estado']) ?></td>
             </tr>
@@ -228,7 +228,7 @@ include __DIR__ . '/includes/header.php';
     <div class="card">
       <div class="card-header">
         <i class="fas fa-money-bill-transfer"></i> Órdenes de Pago Recientes
-        <a href="/Administracion/compras_pago.php" class="ms-auto" style="font-size:.76rem">Ver todas</a>
+        <a href="<?= BASE_URL ?>compras_pago.php" class="ms-auto" style="font-size:.76rem">Ver todas</a>
       </div>
       <div class="card-body p-0">
         <table class="table-ahdeco w-100">

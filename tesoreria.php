@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -208,7 +208,7 @@ include __DIR__ . '/includes/header.php';
 <div class="page-header">
   <h1><i class="fas fa-landmark"></i> Tesorería</h1>
   <div class="d-flex gap-2">
-    <a href="/Administracion/print_tesoreria.php" target="_blank" class="btn-ahdeco-outline"><i class="fas fa-file-pdf"></i> PDF / Imprimir</a>
+    <a href="<?= BASE_URL ?>print_tesoreria.php" target="_blank" class="btn-ahdeco-outline"><i class="fas fa-file-pdf"></i> PDF / Imprimir</a>
     <button class="btn-ahdeco" onclick="openCuentaModal(0)"><i class="fas fa-plus"></i> Nueva Cuenta</button>
   </div>
 </div>
@@ -546,7 +546,7 @@ include __DIR__ . '/includes/header.php';
   <div class="card-header">
     <i class="fas fa-list-check"></i> Auxiliar de Pagos Pendientes
     <span class="ms-2" style="font-size:.8rem;color:var(--text-3)"><?= count($ops) ?> orden<?= count($ops)!=1?'es':'' ?> · <?= lps($totalPend) ?></span>
-    <a href="/Administracion/compras_pago.php" class="ms-auto" style="font-size:.76rem">Ver todas las OP</a>
+    <a href="<?= BASE_URL ?>compras_pago.php" class="ms-auto" style="font-size:.76rem">Ver todas las OP</a>
   </div>
   <div class="card-body p-0">
     <?php if ($ops): ?>
@@ -557,7 +557,7 @@ include __DIR__ . '/includes/header.php';
       <tbody>
         <?php foreach ($ops as $op): ?>
         <tr>
-          <td class="font-mono"><a href="/Administracion/compras_pago.php?action=ver&id=<?= $op['id'] ?>"><?= htmlspecialchars($op['numero']) ?></a></td>
+          <td class="font-mono"><a href="<?= BASE_URL ?>compras_pago.php?action=ver&id=<?= $op['id'] ?>"><?= htmlspecialchars($op['numero']) ?></a></td>
           <td style="white-space:nowrap"><?= fmtFecha($op['fecha']) ?></td>
           <td><?= htmlspecialchars($op['beneficiario']) ?></td>
           <td style="color:var(--text-2);font-size:.82rem"><?= htmlspecialchars(mb_substr($op['concepto'],0,45)) ?><?= mb_strlen($op['concepto'])>45?'…':'' ?></td>

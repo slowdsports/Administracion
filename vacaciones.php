@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -184,7 +184,7 @@ include __DIR__ . '/includes/header.php';
       <?php elseif ($solicitud['estado'] === 'aprobada'): ?>
       <button class="btn btn-sm btn-info text-white" onclick="cambiarEstVac(<?= $id ?>,'disfrutada')"><i class="fas fa-check-double"></i> Marcar Disfrutada</button>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=vac&id=<?= $id ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=vac&id=<?= $id ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
   </div>
   <div class="card-body">

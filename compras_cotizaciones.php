@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -64,11 +64,11 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div class="workflow-steps mb-3">
-  <a href="/Administracion/compras_solicitud.php" class="wf-step done"><i class="fas fa-cart-plus"></i><span>Solicitud de Compra</span></a>
+  <a href="<?= BASE_URL ?>compras_solicitud.php" class="wf-step done"><i class="fas fa-cart-plus"></i><span>Solicitud de Compra</span></a>
   <div class="wf-step active"><i class="fas fa-file-lines"></i><span>Cotizaciones</span></div>
-  <a href="/Administracion/compras_orden.php" class="wf-step"><i class="fas fa-file-circle-check"></i><span>Orden de Compra</span></a>
-  <a href="/Administracion/compras_pago.php" class="wf-step"><i class="fas fa-money-bill-transfer"></i><span>Orden de Pago</span></a>
-  <a href="/Administracion/compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de Recepción</span></a>
+  <a href="<?= BASE_URL ?>compras_orden.php" class="wf-step"><i class="fas fa-file-circle-check"></i><span>Orden de Compra</span></a>
+  <a href="<?= BASE_URL ?>compras_pago.php" class="wf-step"><i class="fas fa-money-bill-transfer"></i><span>Orden de Pago</span></a>
+  <a href="<?= BASE_URL ?>compras_recepcion.php" class="wf-step"><i class="fas fa-boxes-stacked"></i><span>Nota de Recepción</span></a>
 </div>
 
 <div class="page-header">
@@ -110,7 +110,7 @@ include __DIR__ . '/includes/header.php';
       <button class="btn btn-sm btn-success" onclick="cambiarEstado('compras_cotizaciones.php',<?=$co['id']?>,'aprobada','cotizaciones',()=>location.reload())"><i class="fas fa-check"></i> Aprobar</button>
       <?php endif; ?>
       <?php if(in_array($co['estado'],['aprobada'])): ?>
-      <a href="/Administracion/compras_orden.php?action=nuevo&co_id=<?= $co['id'] ?>" class="btn btn-sm btn-primary"><i class="fas fa-file-circle-check"></i> Crear OC</a>
+      <a href="<?= BASE_URL ?>compras_orden.php?action=nuevo&co_id=<?= $co['id'] ?>" class="btn btn-sm btn-primary"><i class="fas fa-file-circle-check"></i> Crear OC</a>
       <?php endif; ?>
       <button class="btn btn-sm btn-outline-secondary" onclick="printDoc()"><i class="fas fa-print"></i></button>
     </div>

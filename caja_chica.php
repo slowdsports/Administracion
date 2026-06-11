@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
 requireLogin();
-if (!hasRole(['admin'])) { header('Location: /Administracion/dashboard.php'); exit; }
+if (!hasRole(['admin'])) { header('Location: ' . BASE_URL . 'dashboard.php'); exit; }
 
 $action = $_GET['action'] ?? 'list';
 $id     = (int)($_GET['id'] ?? 0);
@@ -295,7 +295,7 @@ include __DIR__ . '/includes/header.php';
       </button>
       <?php endif; ?>
       <?php endif; ?>
-      <a href="/Administracion/print.php?tipo=cc&id=<?= $id ?>" target="_blank"
+      <a href="<?= BASE_URL ?>print.php?tipo=cc&id=<?= $id ?>" target="_blank"
          class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
   </div>

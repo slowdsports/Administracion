@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/config/auth.php';
 require_once __DIR__ . '/config/functions.php';
@@ -131,14 +131,14 @@ $hora  = date('H:i');
 <div class="print-toolbar">
   <h2><i class="fas fa-landmark"></i> Tesorería — Disponibilidad de Cuentas</h2>
   <button onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
-  <a href="/Administracion/tesoreria.php">← Volver</a>
+  <a href="<?= BASE_URL ?>tesoreria.php">← Volver</a>
 </div>
 
 <div class="doc">
 
   <!-- Header -->
   <div class="doc-header">
-    <img src="/Administracion/assets/images/logo2aa.png" alt="<?= htmlspecialchars($org) ?>">
+    <img src="<?= BASE_URL ?>assets/images/logo2aa.png" alt="<?= htmlspecialchars($org) ?>">
     <div class="doc-header-text">
       <h1><?= htmlspecialchars($org) ?></h1>
       <p><?= htmlspecialchars($orgFull) ?><br><?= htmlspecialchars($orgDir) ?></p>
