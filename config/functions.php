@@ -1,5 +1,5 @@
 <?php
-define('BASE_URL', '/Administracion/');
+define('BASE_URL', '/');
 
 // ── Número correlativo ────────────────────────────────────────────
 function generarNumero(PDO $pdo, string $tabla, string $campo, string $prefijo, int $anio = 0): string {
