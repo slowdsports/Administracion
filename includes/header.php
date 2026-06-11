@@ -1,5 +1,9 @@
 <?php
-if (!defined('BASE_URL')) define('BASE_URL', '/Administracion/');
+if (!defined('BASE_URL')) {
+    $docRoot = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT']), '/');
+    $appRoot  = rtrim(str_replace('\\', '/', dirname(__DIR__)), '/');
+    define('BASE_URL', rtrim(str_replace($docRoot, '', $appRoot), '/') . '/');
+}
 $pagina  = $pagina ?? 'Dashboard';
 $csrf    = csrfToken();
 
