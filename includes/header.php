@@ -1,8 +1,9 @@
 <?php
 if (!defined('BASE_URL')) {
-    $docRoot = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT']), '/');
-    $appRoot  = rtrim(str_replace('\\', '/', dirname(__DIR__)), '/');
-    define('BASE_URL', rtrim(str_replace($docRoot, '', $appRoot), '/') . '/');
+    $docRoot = rtrim(str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT'])), '/');
+    $appRoot  = rtrim(str_replace('\\', '/', realpath(dirname(__DIR__))), '/');
+    $relative = (strpos($appRoot, $docRoot) === 0) ? substr($appRoot, strlen($docRoot)) : '';
+    define('BASE_URL', ($relative ?: '') . '/');
 }
 $pagina  = $pagina ?? 'Dashboard';
 $csrf    = csrfToken();

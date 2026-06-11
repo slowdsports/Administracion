@@ -1,10 +1,12 @@
 <?php
-// Calcula BASE_URL dinámicamente desde la posición del archivo respecto al document root
+// Calcula BASE_URL dinámicamente usando realpath() para resolver symlinks
 (function () {
-    $docRoot = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT']), '/');
-    $appRoot  = rtrim(str_replace('\\', '/', dirname(__DIR__)), '/');
-    $relative = str_replace($docRoot, '', $appRoot);
-    define('BASE_URL', rtrim($relative, '/') . '/');
+    $docRoot = rtrim(str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT'])), '/');
+    $appRoot  = rtrim(str_replace('\\', '/', realpath(dirname(__DIR__))), '/');
+    $relative = (strpos($appRoot, $docRoot) === 0)
+        ? substr($appRoot, strlen($docRoot))
+        : '';
+    define('BASE_URL', ($relative ?: '') . '/');
 })();
 
 // ── Número correlativo ────────────────────────────────────────────
