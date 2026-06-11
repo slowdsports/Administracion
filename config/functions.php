@@ -1,5 +1,11 @@
 <?php
-define('BASE_URL', '/');
+// Calcula BASE_URL dinámicamente desde la posición del archivo respecto al document root
+(function () {
+    $docRoot = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT']), '/');
+    $appRoot  = rtrim(str_replace('\\', '/', dirname(__DIR__)), '/');
+    $relative = str_replace($docRoot, '', $appRoot);
+    define('BASE_URL', rtrim($relative, '/') . '/');
+})();
 
 // ── Número correlativo ────────────────────────────────────────────
 function generarNumero(PDO $pdo, string $tabla, string $campo, string $prefijo, int $anio = 0): string {
