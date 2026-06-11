@@ -1,9 +1,9 @@
 <?php
 date_default_timezone_set('America/Tegucigalpa');
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'ahdeco_admin');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_NAME', 'u6613652_ahdeco_admin');
+define('DB_USER', 'u6613652_root');
+define('DB_PASS', 'sJmJPvG5?Q0n-+6Y');
 define('DB_CHARSET', 'utf8mb4');
 
 try {
