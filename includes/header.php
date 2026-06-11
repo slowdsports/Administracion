@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 if (!defined('BASE_URL')) {
     $docRoot = rtrim(str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT'])), '/');
     $appRoot  = rtrim(str_replace('\\', '/', realpath(dirname(__DIR__))), '/');

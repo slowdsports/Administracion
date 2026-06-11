@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // Redirige a pdf_download.php que usa Edge --print-to-pdf (texto seleccionable, gradientes incluidos)
 $tipo   = $_GET['tipo'] ?? '';
 $id     = (int)($_GET['id'] ?? 0);

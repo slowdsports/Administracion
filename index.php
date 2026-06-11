@@ -1,4 +1,6 @@
-﻿<?php
+<?php
+ini_set('display_errors', 0);
+
 session_start();
 require_once __DIR__ . '/config/functions.php';
 if (isset($_SESSION['usuario_id'])) {

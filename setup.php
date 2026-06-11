@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * AHDECO - Instalador del Sistema
  * Accede a: http://localhost/Administracion/setup.php
