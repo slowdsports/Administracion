@@ -111,7 +111,7 @@ $stmt->execute([$userId]);
 $me = $stmt->fetch();
 
 $fotoUrl = $me['foto'] ? BASE_URL . $me['foto'] : BASE_URL . 'assets/images/logo2.png';
-$rolColor = ['admin'=>'danger','contador'=>'primary','asistente'=>'secondary','visualizador'=>'info'][$me['rol']] ?? 'secondary';
+$rolColor = ['admin'=>'danger','contador'=>'primary','asistente'=>'secondary','visualizador'=>'info','compras'=>'warning'][$me['rol']] ?? 'secondary';
 
 include __DIR__ . '/includes/header.php';
 ?>
@@ -161,7 +161,7 @@ include __DIR__ . '/includes/header.php';
         <input type="file" id="inp-foto" accept="image/*" style="display:none">
 
         <h5 class="fw-bold mb-1" id="perfil-nombre-display"><?= htmlspecialchars($me['nombre']) ?></h5>
-        <span class="badge bg-<?= $rolColor ?> mb-3"><?= ucfirst($me['rol']) ?></span>
+        <span class="badge bg-<?= $rolColor ?> mb-3"><?= htmlspecialchars(rolLabel($me['rol'])) ?></span>
 
         <div class="text-start px-2">
           <div class="perfil-info-row"><i class="fas fa-envelope"></i> <?= htmlspecialchars($me['email']) ?></div>

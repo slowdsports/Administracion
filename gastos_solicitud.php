@@ -37,10 +37,17 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([$d['fecha'],$d['empleado_id'],$d['firmante1_id'],$d['descripcion'],$d['proyecto_id'],$d['viaje_id'],$total,$d['notas'],$sgId]);
                 $pdo->prepare("DELETE FROM solicitud_gastos_detalle WHERE solicitud_id=?")->execute([$sgId]);
             } else {
+                // Si viene vinculada a un anticipo, heredar su proceso_id
+                $procesoId = null;
+                if ($d['viaje_id']) {
+                    $ps = $pdo->prepare("SELECT proceso_id FROM gastos_viaje WHERE id=?");
+                    $ps->execute([$d['viaje_id']]);
+                    $procesoId = $ps->fetchColumn() ?: null;
+                }
                 $num = generarNumero($pdo,'solicitud_gastos','numero',getConfig($pdo,'prefijo_sg','SG'));
-                $pdo->prepare("INSERT INTO solicitud_gastos (numero,fecha,empleado_id,firmante1_id,descripcion,proyecto_id,viaje_id,monto_total,notas,estado)
-                    VALUES (?,?,?,?,?,?,?,?,?,'pendiente')")
-                    ->execute([$num,$d['fecha'],$d['empleado_id'],$d['firmante1_id'],$d['descripcion'],$d['proyecto_id'],$d['viaje_id'],$total,$d['notas']]);
+                $pdo->prepare("INSERT INTO solicitud_gastos (numero,proceso_id,fecha,empleado_id,firmante1_id,descripcion,proyecto_id,viaje_id,monto_total,notas,estado)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,'pendiente')")
+                    ->execute([$num,$procesoId,$d['fecha'],$d['empleado_id'],$d['firmante1_id'],$d['descripcion'],$d['proyecto_id'],$d['viaje_id'],$total,$d['notas']]);
                 $sgId = $pdo->lastInsertId();
             }
             foreach ($items as $item) {
@@ -84,7 +91,7 @@ if (in_array($action,['ver','editar']) && $id) {
 $empleados = $pdo->query("SELECT id, CONCAT(nombre,' ',apellidos) as nombre FROM empleados WHERE activo=1 ORDER BY apellidos")->fetchAll();
 $proyectos = $pdo->query("SELECT id,nombre FROM proyectos WHERE estado='activo' ORDER BY nombre")->fetchAll();
 $cuentas   = $pdo->query("SELECT id,codigo,nombre FROM cuentas_contables WHERE activa=1 AND tipo='gasto' ORDER BY codigo")->fetchAll();
-$viajes    = $pdo->query("SELECT id, numero, destino, fecha_salida, viaticos_anticipados FROM gastos_viaje ORDER BY id DESC")->fetchAll();
+$viajes    = $pdo->query("SELECT id, numero, tipo, destino, fecha_salida, viaticos_anticipados FROM gastos_viaje ORDER BY id DESC")->fetchAll();
 $listaSolicitudes = [];
 if ($action === 'list') {
     $listaSolicitudes = $pdo->query("SELECT sg.*,CONCAT(e.nombre,' ',e.apellidos) as emp_nombre
@@ -95,7 +102,7 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div class="page-header">
-  <h1><i class="fas fa-file-invoice-dollar"></i> Solicitud de Gastos / Reembolsos</h1>
+  <h1><i class="fas fa-file-invoice-dollar"></i> Liquidaciones / Reembolsos</h1>
   <?php if ($action === 'list'): ?>
   <a href="?action=nuevo" class="btn-ahdeco"><i class="fas fa-plus"></i> Nueva Solicitud</a>
   <?php else: ?>
@@ -107,10 +114,11 @@ include __DIR__ . '/includes/header.php';
 <div class="card">
   <div class="card-body p-0">
     <table id="tbl-sg" class="table-ahdeco w-100">
-      <thead><tr><th>Número</th><th>Fecha</th><th>Empleado</th><th>Descripción</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+      <thead><tr><th>Proceso</th><th>Número</th><th>Fecha</th><th>Empleado</th><th>Descripción</th><th>Total</th><th>Estado</th><th></th></tr></thead>
       <tbody>
         <?php foreach ($listaSolicitudes as $r): ?>
         <tr>
+          <td class="font-mono text-primary fw-bold"><?= $r['proceso_id'] ? formatProceso($r['proceso_id']) : '—' ?></td>
           <td class="font-mono"><?= $r['numero'] ?></td>
           <td><?= fmtFecha($r['fecha']) ?></td>
           <td><?= htmlspecialchars($r['emp_nombre']) ?></td>
@@ -119,14 +127,14 @@ include __DIR__ . '/includes/header.php';
           <td><?= estadoBadge($r['estado']) ?></td>
           <td>
             <a href="?action=ver&id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="fas fa-eye"></i></a>
-            <?php if ($r['estado']==='pendiente'): ?>
+            <?php if (in_array($r['estado'], ['pendiente','rechazada'])): ?>
             <a href="?action=editar&id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-secondary py-0 px-2 ms-1"><i class="fas fa-edit"></i></a>
             <?php endif; ?>
           </td>
         </tr>
         <?php endforeach; ?>
         <?php if (!$listaSolicitudes): ?>
-        <tr><td colspan="7" class="text-center text-muted py-4">No hay solicitudes registradas</td></tr>
+        <tr><td colspan="8" class="text-center text-muted py-4">No hay solicitudes registradas</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
@@ -139,8 +147,8 @@ include __DIR__ . '/includes/header.php';
 <?php if ($viaje_link): ?>
 <div class="trace-chain mb-3">
   <a href="<?= BASE_URL ?>gastos_viajes.php?action=ver&id=<?= $viaje_link['id'] ?>" class="trace-step linked">
-    <i class="fas fa-plane-departure"></i>
-    <span class="trace-step-label">Anticipo de Viaje</span>
+    <i class="fas <?= tipoAnticipoIcon($viaje_link['tipo']) ?>"></i>
+    <span class="trace-step-label">Anticipo<?= $viaje_link['tipo']==='compra' ? ' de Compra' : ' de Viaje' ?></span>
     <span class="trace-step-num"><?= $viaje_link['numero'] ?></span>
     <span class="trace-step-badge"><?= estadoBadge($viaje_link['estado']) ?></span>
   </a>
@@ -157,7 +165,15 @@ include __DIR__ . '/includes/header.php';
 <div class="card mb-3">
   <div class="card-header">
     <i class="fas fa-file-invoice-dollar"></i> <?= $sg['numero'] ?> — <?= estadoBadge($sg['estado']) ?>
+    <?php if ($sg['proceso_id']): ?>
+    <span class="badge bg-primary ms-2 font-mono" title="Número de proceso compartido">Proceso <?= formatProceso($sg['proceso_id']) ?></span>
+    <?php endif; ?>
     <div class="ms-auto d-flex gap-2 no-print">
+      <?php if (in_array($sg['estado'], ['pendiente','rechazada'])): ?>
+      <a href="?action=editar&id=<?= $sg['id'] ?>" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-edit"></i> Editar
+      </a>
+      <?php endif; ?>
       <?php if ($sg['estado']==='pendiente'): ?>
       <button class="btn btn-sm btn-success" onclick="cambiarEstado('gastos_solicitud.php',<?=$sg['id']?>,'aprobada','solicitud_gastos',()=>location.reload())">
         <i class="fas fa-check"></i> Aprobar
@@ -169,6 +185,9 @@ include __DIR__ . '/includes/header.php';
       <button class="btn btn-sm btn-info text-white" onclick="cambiarEstado('gastos_solicitud.php',<?=$sg['id']?>,'pagada','solicitud_gastos',()=>location.reload())">
         <i class="fas fa-money-bill"></i> Pagar
       </button>
+      <a href="<?= BASE_URL ?>compras_pago.php?action=nuevo&sg_id=<?= $sg['id'] ?>" class="btn btn-sm btn-success">
+        <i class="fas fa-money-bill-transfer"></i> Crear Orden de Pago
+      </a>
       <?php endif; ?>
       <a href="<?= BASE_URL ?>print.php?tipo=sg&id=<?= $sg['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
     </div>
@@ -254,7 +273,7 @@ include __DIR__ . '/includes/header.php';
           </select>
         </div>
         <div class="col-md-8">
-          <label class="form-label">Anticipo de Viaje Relacionado <small class="text-muted">(liquidación de viáticos)</small></label>
+          <label class="form-label">Anticipo Relacionado <small class="text-muted">(liquidación de un anticipo de viaje o de compra)</small></label>
           <select name="viaje_id" class="form-select">
             <option value="">— Ninguno —</option>
             <?php
@@ -262,7 +281,7 @@ include __DIR__ . '/includes/header.php';
             foreach ($viajes as $v):
             ?>
             <option value="<?= $v['id'] ?>" <?= $sgViajeId==$v['id']?'selected':'' ?>>
-              <?= $v['numero'] ?> — <?= htmlspecialchars($v['destino']) ?> (<?= fmtFecha($v['fecha_salida']) ?>) — Anticipo: <?= lps($v['viaticos_anticipados']) ?>
+              [<?= $v['tipo']==='compra' ? 'Compra' : 'Viaje' ?>] <?= $v['numero'] ?> — <?= htmlspecialchars($v['destino']) ?> (<?= fmtFecha($v['fecha_salida']) ?>) — Anticipo: <?= lps($v['viaticos_anticipados']) ?>
             </option>
             <?php endforeach; ?>
           </select>

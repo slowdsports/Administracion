@@ -38,6 +38,8 @@ $_avatarFoto = $user['foto'] ? BASE_URL . $user['foto'] : '';
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css">
   <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/ahdeco.css">
 </head>
 <body>
@@ -59,7 +61,7 @@ $_avatarFoto = $user['foto'] ? BASE_URL . $user['foto'] : '';
              style="width:27px;height:27px;object-fit:cover;border-radius:50%;display:block;">
       </div>
       <span><?= htmlspecialchars($user['nombre']) ?></span>
-      <span class="topbar-role"><?= ucfirst($user['rol']) ?></span>
+      <span class="topbar-role"><?= htmlspecialchars(rolLabel($user['rol'])) ?></span>
     </a>
     <button id="btn-theme" onclick="toggleTheme()" title="Cambiar tema">
       <i class="fas fa-moon" id="theme-icon"></i>

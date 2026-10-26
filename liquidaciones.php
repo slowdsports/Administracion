@@ -664,8 +664,10 @@ async function cambiarEstLiq(id, estado) {
       document.getElementById('modal-liq-title').innerHTML = '<i class="fas fa-pen"></i> Editar Liquidación';
       document.getElementById('liq-id').value         = rec.id;
       document.getElementById('liq-emp').value         = rec.empleado_id;
+      $('#liq-emp').trigger('change');
       document.getElementById('liq-fsal').value        = rec.fecha_salida;
       document.getElementById('liq-motivo').value      = rec.motivo;
+      $('#liq-motivo').trigger('change');
       document.getElementById('liq-sueldo').value      = rec.sueldo_mensual;
       document.getElementById('liq-anios').value       = rec.anios_servicio;
       document.getElementById('liq-meses').value       = rec.meses_anio_actual;

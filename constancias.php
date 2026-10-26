@@ -159,6 +159,19 @@ function checkReady() {
   document.getElementById('btn-generar').disabled = !(tipoOk && empOk);
 }
 
+// Abre la ventana de forma síncrona (dentro del gesto de clic) para que el
+// navegador no la trate como popup no solicitado, y avisa si igual la bloquea.
+document.getElementById('form-constancia').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const win = window.open('', '_blank');
+  if (!win) {
+    alert('El navegador bloqueó la ventana emergente. Habilita las ventanas emergentes para este sitio e inténtalo de nuevo.');
+    return;
+  }
+  const params = new URLSearchParams(new FormData(this));
+  win.location.href = this.action + '?' + params.toString();
+});
+
 function resetForm() {
   document.querySelectorAll('.tipo-btn').forEach(b => { b.classList.remove('active','btn-ahdeco'); b.classList.add('btn-outline-secondary'); });
   document.getElementById('input-tipo').value = '';

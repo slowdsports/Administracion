@@ -1,9 +1,22 @@
 <?php
+ini_set('display_errors', 0);
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 date_default_timezone_set('America/Tegucigalpa');
+
+// El helper ajax() del frontend envía application/json cuando los datos no son
+// un FormData (p.ej. deleteRecord y otras llamadas de un solo campo). PHP no
+// llena $_POST para ese Content-Type, así que se parsea aquí manualmente.
+if ($_SERVER['REQUEST_METHOD'] === 'POST'
+    && stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== false) {
+    $jsonBody = json_decode(file_get_contents('php://input'), true);
+    if (is_array($jsonBody)) {
+        $_POST += $jsonBody;
+    }
+}
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'u6613652_ahdeco_admin');
-define('DB_USER', 'u6613652_root');
-define('DB_PASS', 'sJmJPvG5?Q0n-+6Y');
+define('DB_NAME', 'ahdeco_admin');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
 try {

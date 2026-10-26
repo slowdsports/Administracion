@@ -129,14 +129,23 @@ CREATE TABLE proveedores (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Solicitudes de Gastos (Reembolsos)
+-- Procesos de Viáticos (número compartido entre anticipo, liquidación y orden de pago)
+CREATE TABLE procesos_viaticos (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Solicitudes de Gastos (Reembolsos / Liquidaciones)
 CREATE TABLE solicitud_gastos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     numero VARCHAR(20) UNIQUE NOT NULL,
+    proceso_id INT NULL,
     fecha DATE NOT NULL,
     empleado_id INT NOT NULL,
+    firmante1_id INT NULL,
     descripcion VARCHAR(300) NOT NULL,
     proyecto_id INT,
+    viaje_id INT NULL,
     monto_total DECIMAL(10,2) DEFAULT 0.00,
     estado ENUM('pendiente','aprobada','rechazada','pagada') DEFAULT 'pendiente',
     aprobador_id INT,
@@ -144,9 +153,12 @@ CREATE TABLE solicitud_gastos (
     notas TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (empleado_id) REFERENCES empleados(id),
-    FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE SET NULL,
-    FOREIGN KEY (aprobador_id) REFERENCES empleados(id) ON DELETE SET NULL
+    FOREIGN KEY (empleado_id)   REFERENCES empleados(id),
+    FOREIGN KEY (firmante1_id)  REFERENCES empleados(id) ON DELETE SET NULL,
+    FOREIGN KEY (proyecto_id)   REFERENCES proyectos(id) ON DELETE SET NULL,
+    FOREIGN KEY (aprobador_id)  REFERENCES empleados(id) ON DELETE SET NULL,
+    FOREIGN KEY (viaje_id)      REFERENCES gastos_viaje(id) ON DELETE SET NULL,
+    FOREIGN KEY (proceso_id)    REFERENCES procesos_viaticos(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Detalle de Solicitud de Gastos
@@ -162,26 +174,32 @@ CREATE TABLE solicitud_gastos_detalle (
     FOREIGN KEY (cuenta_id) REFERENCES cuentas_contables(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Gastos de Viaje
+-- Anticipos (viaje/viáticos o compra de insumos/activos)
 CREATE TABLE gastos_viaje (
     id INT AUTO_INCREMENT PRIMARY KEY,
     numero VARCHAR(20) UNIQUE NOT NULL,
+    proceso_id INT NULL,
+    tipo ENUM('viaje','compra') NOT NULL DEFAULT 'viaje',
     empleado_id INT NOT NULL,
+    firmante1_id INT NULL,
     proyecto_id INT,
     destino VARCHAR(200) NOT NULL,
     proposito TEXT,
     fecha_salida DATE NOT NULL,
     fecha_regreso DATE NOT NULL,
     viaticos_anticipados DECIMAL(10,2) DEFAULT 0.00,
+    monto_alimentacion DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     total_gastos DECIMAL(10,2) DEFAULT 0.00,
     saldo DECIMAL(10,2) DEFAULT 0.00,
     estado ENUM('pendiente','aprobada','rechazada','liquidada') DEFAULT 'pendiente',
     aprobador_id INT,
     notas TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (empleado_id) REFERENCES empleados(id),
-    FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE SET NULL,
-    FOREIGN KEY (aprobador_id) REFERENCES empleados(id) ON DELETE SET NULL
+    FOREIGN KEY (empleado_id)  REFERENCES empleados(id),
+    FOREIGN KEY (firmante1_id) REFERENCES empleados(id) ON DELETE SET NULL,
+    FOREIGN KEY (proyecto_id)  REFERENCES proyectos(id) ON DELETE SET NULL,
+    FOREIGN KEY (aprobador_id) REFERENCES empleados(id) ON DELETE SET NULL,
+    FOREIGN KEY (proceso_id)   REFERENCES procesos_viaticos(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Detalle de Gastos de Viaje
@@ -316,7 +334,9 @@ CREATE TABLE ordenes_compra (
     condiciones_pago VARCHAR(200),
     lugar_entrega VARCHAR(200),
     subtotal DECIMAL(10,2) DEFAULT 0.00,
+    descuento DECIMAL(10,2) DEFAULT 0.00,
     impuestos DECIMAL(10,2) DEFAULT 0.00,
+    impuesto_turismo DECIMAL(10,2) DEFAULT 0.00,
     total DECIMAL(10,2) DEFAULT 0.00,
     proyecto_id INT,
     estado ENUM('emitida','parcial','completa','anulada') DEFAULT 'emitida',
@@ -348,6 +368,7 @@ CREATE TABLE ordenes_compra_detalle (
 CREATE TABLE ordenes_pago (
     id INT AUTO_INCREMENT PRIMARY KEY,
     numero VARCHAR(20) UNIQUE NOT NULL,
+    proceso_id INT NULL,
     fecha DATE NOT NULL,
     beneficiario VARCHAR(200) NOT NULL,
     beneficiario_tipo ENUM('proveedor','empleado','otro') DEFAULT 'proveedor',
@@ -357,9 +378,13 @@ CREATE TABLE ordenes_pago (
     monto DECIMAL(10,2) DEFAULT 0.00,
     forma_pago ENUM('cheque','transferencia','efectivo') DEFAULT 'transferencia',
     numero_cheque VARCHAR(50),
+    factura_proveedor VARCHAR(50),
     banco VARCHAR(100),
+    banco_tipo ENUM('ahorros','cheques') NULL,
     cuenta_bancaria VARCHAR(50),
+    cuenta_bancaria_id INT,
     orden_compra_id INT,
+    solicitud_gastos_id INT,
     cuenta_id INT,
     proyecto_id INT,
     estado ENUM('pendiente','aprobada','pagada','anulada') DEFAULT 'pendiente',
@@ -368,11 +393,13 @@ CREATE TABLE ordenes_pago (
     fecha_pago DATE,
     notas TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL,
-    FOREIGN KEY (empleado_id) REFERENCES empleados(id) ON DELETE SET NULL,
-    FOREIGN KEY (orden_compra_id) REFERENCES ordenes_compra(id) ON DELETE SET NULL,
-    FOREIGN KEY (cuenta_id) REFERENCES cuentas_contables(id) ON DELETE SET NULL,
-    FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE SET NULL
+    FOREIGN KEY (proveedor_id)        REFERENCES proveedores(id)      ON DELETE SET NULL,
+    FOREIGN KEY (empleado_id)         REFERENCES empleados(id)         ON DELETE SET NULL,
+    FOREIGN KEY (orden_compra_id)     REFERENCES ordenes_compra(id)   ON DELETE SET NULL,
+    FOREIGN KEY (solicitud_gastos_id) REFERENCES solicitud_gastos(id) ON DELETE SET NULL,
+    FOREIGN KEY (cuenta_id)           REFERENCES cuentas_contables(id) ON DELETE SET NULL,
+    FOREIGN KEY (proyecto_id)         REFERENCES proyectos(id)         ON DELETE SET NULL,
+    FOREIGN KEY (proceso_id)          REFERENCES procesos_viaticos(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Notas de Recepción

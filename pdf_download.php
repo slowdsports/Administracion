@@ -6,9 +6,10 @@ requireLogin();
 
 $tipo = $_GET['tipo'] ?? '';
 $id   = (int)($_GET['id'] ?? 0);
-if (!$id || !in_array($tipo, ['sc','oc','op','pl','plv','plc','gv','sg','proceso','pa','pb','pav','pbv','vac','per','trabajo','salario','referencia','tiempo','liq','cc','memo','acta'])) {
+if (!$id || !in_array($tipo, ['sc','oc','op','pl','plv','plc','gv','sg','proceso','pa','pb','pav','pbv','vac','per','trabajo','salario','referencia','tiempo','liq','cc','memo','acta','gva','plp','pbp'])) {
     http_response_code(400); die('Parámetros inválidos.');
 }
+if (!puedeVerDocumento($tipo)) { http_response_code(403); die('No tiene permiso para ver este documento.'); }
 
 // ── Capturar HTML de print.php ────────────────────────────────────
 ob_start();
@@ -55,16 +56,40 @@ $output   = [];
 $browser  = findBrowser();
 $wkhtml   = findWkhtmltopdf();
 
+// El proceso de Apache corre elevado (integridad "High"); Edge/Chrome se niega a
+// arrancar por completo cuando se lanza así (auto-verificación de integridad de
+// proceso) y termina en silencio con exit 0 sin generar el PDF. Hay que lanzar el
+// navegador con integridad "Medium" (des-elevado) para que funcione.
+function isElevated(): bool {
+    $out = [];
+    exec('whoami /groups 2>&1', $out);
+    foreach ($out as $line) {
+        if (stripos($line, 'High Mandatory Level') !== false) return true;
+    }
+    return false;
+}
+
 if ($browser) {
     $isWin   = DIRECTORY_SEPARATOR === '\\';
     $fileUrl = $isWin
         ? 'file:///' . str_replace('\\', '/', $tmpHtml)
         : 'file://' . $tmpHtml;
-    $cmd = escapeshellarg($browser)
+    // Perfil de usuario dedicado: si el navegador ya está abierto en modo normal
+    // en el servidor, lanzar msedge/chrome sin --user-data-dir propio hace que el
+    // proceso reenvíe la orden a la instancia existente (que ignora --headless) y falle.
+    $udd = $tmpDir . DIRECTORY_SEPARATOR . $uid . '_profile';
+    $browserCmd = escapeshellarg($browser)
          . ' --headless=new --disable-gpu --no-sandbox --disable-dev-shm-usage'
+         . ' --user-data-dir=' . escapeshellarg($udd)
          . ' --print-to-pdf=' . escapeshellarg($tmpPdf)
          . ' --no-pdf-header-footer'
-         . ' ' . escapeshellarg($fileUrl) . ' 2>&1';
+         . ' ' . escapeshellarg($fileUrl);
+    if ($isWin && isElevated()) {
+        $inner = str_replace('"', '\"', $browserCmd);
+        $cmd = 'runas /trustlevel:0x20000 "' . $inner . '" 2>&1';
+    } else {
+        $cmd = $browserCmd . ' 2>&1';
+    }
     exec($cmd, $output, $exitCode);
 } elseif ($wkhtml) {
     $cmd = escapeshellarg($wkhtml)
@@ -113,3 +138,8 @@ readfile($tmpPdf);
 // ── Limpieza ──────────────────────────────────────────────────────
 @unlink($tmpHtml);
 @unlink($tmpPdf);
+if (!empty($udd) && is_dir($udd)) {
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($udd, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($it as $f) { $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname()); }
+    @rmdir($udd);
+}

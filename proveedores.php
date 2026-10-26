@@ -149,10 +149,12 @@ function editProv(p){
   document.getElementById('p-email').value=p.email||'';
   document.getElementById('p-dir').value=p.direccion||'';
   document.getElementById('p-cat').value=p.categoria;
+  $('#p-cat').trigger('change');
   document.getElementById('p-activo').checked=p.activo==1;
   document.getElementById('p-banco').value=p.banco||'';
   document.getElementById('p-banco-cuenta').value=p.banco_cuenta||'';
   document.getElementById('p-banco-tipo').value=p.banco_tipo||'';
+  $('#p-banco-tipo').trigger('change');
   document.getElementById('prov-modal-title').textContent='Editar: '+p.nombre;
   new bootstrap.Modal(document.getElementById('modal-prov')).show();
 }

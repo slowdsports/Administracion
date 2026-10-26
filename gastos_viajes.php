@@ -18,7 +18,9 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $total = round(array_sum(array_column($items, 'monto')), 2);
         $alimentacion = round((float)($_POST['monto_alimentacion'] ?? 0), 2);
         $firmante1Id = !empty($_POST['firmante1_id']) ? (int)$_POST['firmante1_id'] : (int)$_POST['empleado_id'];
+        $tipo = ($_POST['tipo'] ?? 'viaje') === 'compra' ? 'compra' : 'viaje';
         $d = [
+            'tipo'               => $tipo,
             'empleado_id'        => (int)$_POST['empleado_id'],
             'firmante1_id'       => $firmante1Id,
             'proyecto_id'        => $_POST['proyecto_id'] ?: null,
@@ -27,23 +29,24 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
             'fecha_salida'       => $_POST['fecha_salida'],
             'fecha_regreso'      => $_POST['fecha_regreso'],
             'notas'              => trim($_POST['notas'] ?? ''),
-            'monto_alimentacion' => $alimentacion,
+            'monto_alimentacion' => $tipo === 'compra' ? 0 : $alimentacion,
         ];
         $pdo->beginTransaction();
         try {
             if ($gvId) {
-                $pdo->prepare("UPDATE gastos_viaje SET empleado_id=?,firmante1_id=?,proyecto_id=?,destino=?,proposito=?,
+                $pdo->prepare("UPDATE gastos_viaje SET tipo=?,empleado_id=?,firmante1_id=?,proyecto_id=?,destino=?,proposito=?,
                     fecha_salida=?,fecha_regreso=?,viaticos_anticipados=?,monto_alimentacion=?,notas=? WHERE id=?")->execute([
-                    $d['empleado_id'],$d['firmante1_id'],$d['proyecto_id'],$d['destino'],$d['proposito'],
+                    $d['tipo'],$d['empleado_id'],$d['firmante1_id'],$d['proyecto_id'],$d['destino'],$d['proposito'],
                     $d['fecha_salida'],$d['fecha_regreso'],$total,$d['monto_alimentacion'],$d['notas'],$gvId
                 ]);
                 $pdo->prepare("DELETE FROM gastos_viaje_detalle WHERE viaje_id=?")->execute([$gvId]);
             } else {
+                $procesoId = generarProceso($pdo);
                 $num = generarNumero($pdo,'gastos_viaje','numero',getConfig($pdo,'prefijo_gv','GV'));
-                $pdo->prepare("INSERT INTO gastos_viaje (numero,empleado_id,firmante1_id,proyecto_id,destino,proposito,
+                $pdo->prepare("INSERT INTO gastos_viaje (numero,proceso_id,tipo,empleado_id,firmante1_id,proyecto_id,destino,proposito,
                     fecha_salida,fecha_regreso,viaticos_anticipados,monto_alimentacion,total_gastos,saldo,notas,estado)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,0,0,?,'pendiente')")
-                    ->execute([$num,$d['empleado_id'],$d['firmante1_id'],$d['proyecto_id'],$d['destino'],$d['proposito'],
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,?,'pendiente')")
+                    ->execute([$num,$procesoId,$d['tipo'],$d['empleado_id'],$d['firmante1_id'],$d['proyecto_id'],$d['destino'],$d['proposito'],
                     $d['fecha_salida'],$d['fecha_regreso'],$total,$d['monto_alimentacion'],$d['notas']]);
                 $gvId = $pdo->lastInsertId();
             }
@@ -56,7 +59,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $esNuevo = !(int)($_POST['id'] ?? 0);
             registrarAuditoria($pdo, $esNuevo ? 'INSERT' : 'UPDATE', 'gastos_viaje', $gvId,
                 ($esNuevo ? 'GV creado' : 'GV actualizado') . ': ' . lps($total));
-            jsonOk(['id'=>$gvId],'Anticipo de viáticos guardado.');
+            jsonOk(['id'=>$gvId],'Anticipo guardado.');
         } catch(\Exception $e){ $pdo->rollBack(); jsonErr($e->getMessage()); }
     }
 
@@ -95,9 +98,9 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div class="page-header">
-  <h1><i class="fas fa-plane-departure"></i> Gastos de Viaje / Viáticos</h1>
+  <h1><i class="fas fa-hand-holding-dollar"></i> Anticipos (Viáticos y Compras)</h1>
   <?php if ($action === 'list'): ?>
-  <a href="?action=nuevo" class="btn-ahdeco"><i class="fas fa-plus"></i> Nuevo Gasto de Viaje</a>
+  <a href="?action=nuevo" class="btn-ahdeco"><i class="fas fa-plus"></i> Nuevo Anticipo</a>
   <?php else: ?>
   <a href="?" class="btn-ahdeco-outline"><i class="fas fa-arrow-left"></i> Volver</a>
   <?php endif; ?>
@@ -107,11 +110,13 @@ include __DIR__ . '/includes/header.php';
 <div class="card">
   <div class="card-body p-0">
     <table id="tbl-gv" class="table-ahdeco w-100">
-      <thead><tr><th>Número</th><th>Empleado</th><th>Destino</th><th>Salida</th><th>Regreso</th><th>Viáticos Anticipados</th><th>Estado</th><th></th></tr></thead>
+      <thead><tr><th>Proceso</th><th>Número</th><th>Tipo</th><th>Empleado</th><th>Destino / Concepto</th><th>Salida</th><th>Regreso</th><th>Monto Anticipo</th><th>Estado</th><th></th></tr></thead>
       <tbody>
         <?php foreach ($listaViajes as $r): ?>
         <tr>
+          <td class="font-mono text-primary fw-bold"><?= $r['proceso_id'] ? formatProceso($r['proceso_id']) : '—' ?></td>
           <td class="font-mono"><?= $r['numero'] ?></td>
+          <td><?= tipoAnticipoBadge($r['tipo']) ?></td>
           <td><?= htmlspecialchars($r['emp_nombre']) ?></td>
           <td><?= htmlspecialchars($r['destino']) ?></td>
           <td><?= fmtFecha($r['fecha_salida']) ?></td>
@@ -127,7 +132,7 @@ include __DIR__ . '/includes/header.php';
         </tr>
         <?php endforeach; ?>
         <?php if (!$listaViajes): ?>
-        <tr><td colspan="10" class="text-center text-muted py-4">No hay gastos de viaje registrados</td></tr>
+        <tr><td colspan="10" class="text-center text-muted py-4">No hay anticipos registrados</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
@@ -138,7 +143,11 @@ include __DIR__ . '/includes/header.php';
 <div id="print-area">
 <div class="card mb-3">
   <div class="card-header">
-    <i class="fas fa-plane-departure"></i> <?= $gv['numero'] ?> — <?= estadoBadge($gv['estado']) ?>
+    <i class="fas <?= tipoAnticipoIcon($gv['tipo']) ?>"></i> <?= $gv['numero'] ?> — <?= estadoBadge($gv['estado']) ?>
+    <?= tipoAnticipoBadge($gv['tipo']) ?>
+    <?php if ($gv['proceso_id']): ?>
+    <span class="badge bg-primary ms-2 font-mono" title="Número de proceso compartido">Proceso <?= formatProceso($gv['proceso_id']) ?></span>
+    <?php endif; ?>
     <div class="ms-auto d-flex gap-2 no-print">
       <?php if ($gv['estado']==='pendiente'): ?>
       <button class="btn btn-sm btn-success" onclick="cambiarEstado('gastos_viajes.php',<?=$gv['id']?>,'aprobada','gastos_viaje',()=>location.reload())"><i class="fas fa-check"></i> Aprobar</button>
@@ -147,19 +156,22 @@ include __DIR__ . '/includes/header.php';
       <button class="btn btn-sm btn-info text-white" onclick="cambiarEstado('gastos_viajes.php',<?=$gv['id']?>,'liquidada','gastos_viaje',()=>location.reload())"><i class="fas fa-check-double"></i> Liquidar</button>
       <?php endif; ?>
       <a href="<?= BASE_URL ?>print.php?tipo=gv&id=<?= $gv['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <?php if ($gv['tipo']==='viaje' && $gv['estado']==='liquidada' && ($gv['monto_alimentacion'] ?? 0) > 0): ?>
+      <a href="<?= BASE_URL ?>print.php?tipo=gva&id=<?= $gv['id'] ?>" target="_blank" class="btn btn-sm btn-outline-warning"><i class="fas fa-utensils"></i> Voucher Alimentación</a>
+      <?php endif; ?>
     </div>
   </div>
   <div class="card-body">
     <div class="row g-2" style="font-size:.85rem;">
       <div class="col-md-3"><strong>Empleado:</strong> <?= htmlspecialchars($gv['emp_nombre']) ?></div>
-      <div class="col-md-3"><strong>Destino:</strong> <?= htmlspecialchars($gv['destino']) ?></div>
-      <div class="col-md-3"><strong>Salida:</strong> <?= fmtFecha($gv['fecha_salida']) ?></div>
-      <div class="col-md-3"><strong>Regreso:</strong> <?= fmtFecha($gv['fecha_regreso']) ?></div>
-      <?php if ($gv['monto_alimentacion'] > 0): ?>
+      <div class="col-md-3"><strong><?= $gv['tipo']==='compra' ? 'Concepto:' : 'Destino:' ?></strong> <?= htmlspecialchars($gv['destino']) ?></div>
+      <div class="col-md-3"><strong><?= $gv['tipo']==='compra' ? 'Fecha del Anticipo:' : 'Salida:' ?></strong> <?= fmtFecha($gv['fecha_salida']) ?></div>
+      <div class="col-md-3"><strong><?= $gv['tipo']==='compra' ? 'Fecha Límite de Liquidación:' : 'Regreso:' ?></strong> <?= fmtFecha($gv['fecha_regreso']) ?></div>
+      <?php if ($gv['tipo']==='viaje' && $gv['monto_alimentacion'] > 0): ?>
       <div class="col-md-3"><strong>Alimentación:</strong> <span class="font-mono"><?= lps($gv['monto_alimentacion']) ?></span></div>
       <?php endif; ?>
       <?php if ($gv['proposito']): ?>
-      <div class="col-12"><strong>Propósito:</strong> <?= htmlspecialchars($gv['proposito']) ?></div>
+      <div class="col-12"><strong><?= $gv['tipo']==='compra' ? 'Justificación:' : 'Propósito:' ?></strong> <?= htmlspecialchars($gv['proposito']) ?></div>
       <?php endif; ?>
     </div>
   </div>
@@ -226,7 +238,7 @@ include __DIR__ . '/includes/header.php';
 
 <?php else: ?>
 <div class="card">
-  <div class="card-header"><i class="fas fa-plus"></i> <?= $gv ? 'Editar: '.$gv['numero'] : 'Nuevo Gasto de Viaje' ?></div>
+  <div class="card-header"><i class="fas fa-plus"></i> <?= $gv ? 'Editar: '.$gv['numero'] : 'Nuevo Anticipo' ?></div>
   <div class="card-body">
     <form id="form-gv" action="gastos_viajes.php" method="POST">
       <input type="hidden" name="csrf_token" value="<?= csrfToken() ?>">
@@ -234,7 +246,14 @@ include __DIR__ . '/includes/header.php';
       <input type="hidden" name="id" value="<?= $gv['id'] ?? 0 ?>">
       <input type="hidden" name="items" id="items-json">
       <div class="row g-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
+          <label class="form-label">Tipo de Anticipo *</label>
+          <select name="tipo" id="sel-tipo" class="form-select" required onchange="toggleTipoAnticipo()">
+            <option value="viaje" <?= ($gv['tipo']??'viaje')==='viaje'?'selected':'' ?>>Viaje (Viáticos)</option>
+            <option value="compra" <?= ($gv['tipo']??'viaje')==='compra'?'selected':'' ?>>Compra de Insumos/Activos</option>
+          </select>
+        </div>
+        <div class="col-md-5">
           <label class="form-label">Empleado *</label>
           <select name="empleado_id" id="sel-empleado" class="form-select" required>
             <option value="">-- Seleccione --</option>
@@ -242,10 +261,6 @@ include __DIR__ . '/includes/header.php';
             <option value="<?= $e['id'] ?>" <?= ($gv['empleado_id']??0)==$e['id']?'selected':'' ?>><?= htmlspecialchars($e['nombre']) ?></option>
             <?php endforeach; ?>
           </select>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Destino *</label>
-          <input type="text" name="destino" class="form-control" required value="<?= htmlspecialchars($gv['destino']??'') ?>">
         </div>
         <div class="col-md-4">
           <label class="form-label">Proyecto</label>
@@ -256,7 +271,11 @@ include __DIR__ . '/includes/header.php';
             <?php endforeach; ?>
           </select>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-8">
+          <label class="form-label" id="lbl-destino">Destino *</label>
+          <input type="text" name="destino" id="inp-destino" class="form-control" required value="<?= htmlspecialchars($gv['destino']??'') ?>">
+        </div>
+        <div class="col-md-4">
           <label class="form-label">Firmante (Firma 1 del documento)</label>
           <select name="firmante1_id" id="sel-firmante1" class="form-select">
             <option value="">— Mismo que empleado —</option>
@@ -264,23 +283,23 @@ include __DIR__ . '/includes/header.php';
             <option value="<?= $e['id'] ?>" <?= ($gv['firmante1_id']??0)==$e['id']?'selected':'' ?>><?= htmlspecialchars($e['nombre']) ?></option>
             <?php endforeach; ?>
           </select>
-          <div class="form-text">Si no selecciona ninguno, se usará el empleado del viaje.</div>
+          <div class="form-text">Si no selecciona ninguno, se usará el empleado.</div>
         </div>
         <div class="col-md-6">
-          <label class="form-label">Fecha de Salida *</label>
+          <label class="form-label" id="lbl-fecha-salida">Fecha de Salida *</label>
           <input type="text" name="fecha_salida" class="form-control date-input" required value="<?= $gv['fecha_salida']??date('Y-m-d') ?>">
         </div>
         <div class="col-md-6">
-          <label class="form-label">Fecha de Regreso *</label>
+          <label class="form-label" id="lbl-fecha-regreso">Fecha de Regreso *</label>
           <input type="text" name="fecha_regreso" class="form-control date-input" required value="<?= $gv['fecha_regreso']??date('Y-m-d') ?>">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-4" id="grp-alimentacion">
           <label class="form-label">Viáticos de Alimentación (L.)</label>
           <input type="number" name="monto_alimentacion" class="form-control text-end" step="0.01" min="0" value="<?= $gv['monto_alimentacion'] ?? 0 ?>">
           <div class="form-text">Monto para voucher de alimentación. Si es 0 no se genera voucher.</div>
         </div>
         <div class="col-md-12">
-          <label class="form-label">Propósito del Viaje</label>
+          <label class="form-label" id="lbl-proposito">Propósito del Viaje</label>
           <textarea name="proposito" class="form-control" rows="2"><?= htmlspecialchars($gv['proposito']??'') ?></textarea>
         </div>
       </div>
@@ -331,6 +350,23 @@ $cuentasJson = json_encode(array_map(fn($c) => ['id' => $c['id'], 'codigo' => $c
 $extraJs = "
 initDataTable('#tbl-gv');
 calcGvTotal();
+toggleTipoAnticipo();
+
+function toggleTipoAnticipo() {
+  const sel = document.getElementById('sel-tipo');
+  if (!sel) return;
+  const esCompra = sel.value === 'compra';
+  const lblDestino = document.getElementById('lbl-destino');
+  const lblSalida  = document.getElementById('lbl-fecha-salida');
+  const lblRegreso = document.getElementById('lbl-fecha-regreso');
+  const lblProposito = document.getElementById('lbl-proposito');
+  const grpAlimentacion = document.getElementById('grp-alimentacion');
+  if (lblDestino) lblDestino.textContent = esCompra ? 'Concepto / Insumo a Comprar *' : 'Destino *';
+  if (lblSalida) lblSalida.textContent = esCompra ? 'Fecha del Anticipo *' : 'Fecha de Salida *';
+  if (lblRegreso) lblRegreso.textContent = esCompra ? 'Fecha Límite de Liquidación *' : 'Fecha de Regreso *';
+  if (lblProposito) lblProposito.textContent = esCompra ? 'Justificación de la Compra' : 'Propósito del Viaje';
+  if (grpAlimentacion) grpAlimentacion.style.display = esCompra ? 'none' : '';
+}
 
 function calcGvTotal() {
   let sum = 0;

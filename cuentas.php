@@ -152,8 +152,10 @@ function editCuenta(c){
   document.getElementById('f-nombre').value=c.nombre;
   document.getElementById('f-nivel').value=c.nivel;
   document.getElementById('f-tipo').value=c.tipo;
+  $('#f-tipo').trigger('change');
   document.getElementById('f-subtipo').value=c.subtipo||'';
   document.getElementById('f-padre').value=c.cuenta_padre_id||'';
+  $('#f-padre').trigger('change');
   document.getElementById('f-desc').value=c.descripcion||'';
   document.getElementById('f-activa').checked=c.activa==1;
   document.getElementById('modal-title-text').textContent='Editar: '+c.codigo+' '+c.nombre;

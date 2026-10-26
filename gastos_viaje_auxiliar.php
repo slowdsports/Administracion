@@ -11,6 +11,7 @@ $filas = $pdo->query("
     SELECT
         gv.id            AS gv_id,
         gv.numero        AS gv_numero,
+        gv.tipo          AS gv_tipo,
         gv.fecha_salida,
         gv.fecha_regreso,
         gv.destino,
@@ -66,7 +67,7 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div class="page-header">
-  <h1><i class="fas fa-scale-balanced"></i> Auxiliar Contable — Anticipos de Viáticos</h1>
+  <h1><i class="fas fa-scale-balanced"></i> Auxiliar Contable — Anticipos (Viáticos y Compras)</h1>
 </div>
 
 <!-- ── Tarjetas de resumen ───────────────────────────────────────── -->
@@ -139,7 +140,8 @@ $empClass = $balEmp > 0 ? '#d97706' : ($balEmp < 0 ? '#16a34a' : '#64748b');
       <thead>
         <tr>
           <th>Número</th>
-          <th>Destino</th>
+          <th>Tipo</th>
+          <th>Destino / Concepto</th>
           <th>Salida</th>
           <th>Regreso</th>
           <th>Estado</th>
@@ -164,6 +166,7 @@ $empClass = $balEmp > 0 ? '#d97706' : ($balEmp < 0 ? '#16a34a' : '#64748b');
         ?>
         <tr>
           <td class="font-mono" style="font-size:.82rem"><?= htmlspecialchars($v['gv_numero']) ?></td>
+          <td><?= tipoAnticipoBadge($v['gv_tipo']) ?></td>
           <td><?= htmlspecialchars($v['destino']) ?></td>
           <td><?= fmtFecha($v['fecha_salida']) ?></td>
           <td><?= fmtFecha($v['fecha_regreso']) ?></td>
@@ -196,7 +199,7 @@ $empClass = $balEmp > 0 ? '#d97706' : ($balEmp < 0 ? '#16a34a' : '#64748b');
       </tbody>
       <tfoot>
         <tr style="background:var(--surface-2);font-weight:600;font-size:.82rem">
-          <td colspan="5" class="text-end" style="padding:7px 10px">Subtotal empleado:</td>
+          <td colspan="6" class="text-end" style="padding:7px 10px">Subtotal empleado:</td>
           <td class="font-mono text-end" style="padding:7px 10px"><?= lps($emp['anticipo']) ?></td>
           <td class="font-mono text-end" style="padding:7px 10px"><?= lps($emp['liquidado']) ?></td>
           <td class="font-mono text-end" style="padding:7px 10px;color:<?= $empClass ?>">

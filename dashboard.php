@@ -89,9 +89,9 @@ include __DIR__ . '/includes/header.php';
   </div>
   <div class="col-6 col-md-4 col-xl-2">
     <a href="<?= BASE_URL ?>gastos_viajes.php?estado=pendiente" class="kpi-card kpi-teal">
-      <div class="kpi-icon"><i class="fas fa-plane-departure"></i></div>
+      <div class="kpi-icon"><i class="fas fa-hand-holding-dollar"></i></div>
       <div class="kpi-value"><?= $stats['viajes_pendientes'] ?></div>
-      <div class="kpi-label">Viajes Pendientes</div>
+      <div class="kpi-label">Anticipos Pendientes</div>
     </a>
   </div>
   <div class="col-6 col-md-4 col-xl-2">

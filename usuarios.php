@@ -11,7 +11,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $_act = $_POST['_action'] ?? '';
     if ($_act === 'guardar') {
         $uid  = (int)($_POST['id'] ?? 0);
-        $d = ['nombre'=>trim($_POST['nombre']),'email'=>trim($_POST['email']),'rol'=>$_POST['rol']??'asistente','activo'=>isset($_POST['activo'])?1:0];
+        $d = ['nombre'=>trim($_POST['nombre']),'email'=>trim($_POST['email']),'rol'=>array_key_exists($_POST['rol']??'', ROLES)?$_POST['rol']:'asistente','activo'=>isset($_POST['activo'])?1:0];
         try {
             if ($uid) {
                 $pdo->prepare("UPDATE usuarios SET nombre=?,email=?,rol=?,activo=? WHERE id=?")->execute([...array_values($d), $uid]);
@@ -45,7 +45,7 @@ include __DIR__ . '/includes/header.php';
       <tr>
         <td><?= htmlspecialchars($u['nombre']) ?></td>
         <td><?= htmlspecialchars($u['email']) ?></td>
-        <td><span class="badge bg-<?= $u['rol']==='admin'?'danger':($u['rol']==='contador'?'primary':'secondary') ?>"><?= ucfirst($u['rol']) ?></span></td>
+        <td><span class="badge bg-<?= ['admin'=>'danger','contador'=>'primary','compras'=>'warning'][$u['rol']] ?? 'secondary' ?>"><?= htmlspecialchars(rolLabel($u['rol'])) ?></span></td>
         <td><?= $u['ultimo_acceso']?date('d/m/Y H:i',strtotime($u['ultimo_acceso'])):'â€”' ?></td>
         <td><?= $u['activo']?'<span class="badge bg-success">Activo</span>':'<span class="badge bg-danger">Inactivo</span>' ?></td>
         <td><button class="btn btn-sm btn-outline-primary py-0 px-2" onclick='editUser(<?= json_encode(['id'=>$u['id'],'nombre'=>$u['nombre'],'email'=>$u['email'],'rol'=>$u['rol'],'activo'=>$u['activo']]) ?>)'><i class="fas fa-edit"></i></button></td>
@@ -73,6 +73,7 @@ include __DIR__ . '/includes/header.php';
               <option value="contador">Contador</option>
               <option value="asistente" selected>Asistente</option>
               <option value="visualizador">Visualizador</option>
+              <option value="compras">Compras y Contabilidad (solo Gastos, Anticipos, Compras y Proyectos)</option>
             </select>
           </div>
           <div class="mb-3"><label class="form-label">ContraseÃ±a <small class="text-muted">(dejar vacÃ­o para no cambiar)</small></label><input type="password" name="new_password" id="u-pass" class="form-control" minlength="6"></div>
@@ -94,6 +95,7 @@ function editUser(u){
   document.getElementById('u-nombre').value=u.nombre;
   document.getElementById('u-email').value=u.email;
   document.getElementById('u-rol').value=u.rol;
+  $('#u-rol').trigger('change');
   document.getElementById('u-activo').checked=u.activo==1;
   document.getElementById('u-pass').value='';
   document.getElementById('usr-title').textContent='Editar: '+u.nombre;

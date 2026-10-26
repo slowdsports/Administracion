@@ -60,6 +60,57 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
     $_act = $_POST['_action'] ?? '';
 
+    // Copia la distribución por defecto de cada empleado a las filas del período
+    $copiarDist = $pdo->prepare("INSERT INTO planilla_detalle_proyectos (detalle_id,proyecto_id,pct_salario,pct_patronal)
+        SELECT pd.id, ep.proyecto_id, ep.pct_salario, ep.pct_patronal
+        FROM planilla_detalle pd JOIN empleado_proyectos ep ON ep.empleado_id = pd.empleado_id
+        WHERE pd.periodo_id=?");
+    $periodoEditable = function (int $pid) use ($pdo): void {
+        $s = $pdo->prepare("SELECT estado FROM planilla_periodos WHERE id=?");
+        $s->execute([$pid]);
+        $estado = $s->fetchColumn();
+        if ($estado === false) jsonErr('Planilla no encontrada.');
+        if ($estado === 'pagada') jsonErr('La planilla ya está pagada; no se puede modificar la distribución.');
+    };
+
+    if ($_act === 'guardar_distribucion') {
+        $pid  = (int)$_POST['periodo_id'];
+        $did  = (int)$_POST['detalle_id'];
+        $periodoEditable($pid);
+        $chk = $pdo->prepare("SELECT id FROM planilla_detalle WHERE id=? AND periodo_id=?");
+        $chk->execute([$did, $pid]);
+        if (!$chk->fetch()) jsonErr('Fila de planilla no encontrada.');
+        $dist = parseDistribucion($_POST['dist'] ?? [], ['pct_salario', 'pct_patronal']);
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE FROM planilla_detalle_proyectos WHERE detalle_id=?")->execute([$did]);
+            $ins = $pdo->prepare("INSERT INTO planilla_detalle_proyectos (detalle_id,proyecto_id,pct_salario,pct_patronal) VALUES (?,?,?,?)");
+            foreach ($dist as $r) $ins->execute([$did, $r['proyecto_id'], $r['pct_salario'], $r['pct_patronal']]);
+            $pdo->commit();
+            jsonOk([], 'Distribución guardada.');
+        } catch (\Exception $e) {
+            $pdo->rollBack();
+            jsonErr('Error: ' . $e->getMessage());
+        }
+    }
+
+    if ($_act === 'aplicar_distribucion') {
+        $pid = (int)$_POST['periodo_id'];
+        $periodoEditable($pid);
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE pdp FROM planilla_detalle_proyectos pdp
+                JOIN planilla_detalle pd ON pdp.detalle_id = pd.id WHERE pd.periodo_id=?")->execute([$pid]);
+            $copiarDist->execute([$pid]);
+            $pdo->commit();
+            registrarAuditoria($pdo, 'UPDATE', 'planilla_periodos', $pid, 'Distribución por proyecto reaplicada desde empleados');
+            jsonOk([], 'Distribución de los empleados aplicada a la planilla.');
+        } catch (\Exception $e) {
+            $pdo->rollBack();
+            jsonErr('Error: ' . $e->getMessage());
+        }
+    }
+
     if ($_act === 'generar') {
         $anio      = (int)$_POST['anio'];
         $mes       = (int)$_POST['mes'];
@@ -107,6 +158,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->prepare("UPDATE planilla_periodos SET total_bruto=?,total_deducciones=?,total_neto=?,estado='procesada' WHERE id=?")
                 ->execute([$totalBruto,$totalDed,$totalNeto,$periodoId]);
+            $copiarDist->execute([$periodoId]);
 
             $pdo->commit();
             registrarAuditoria($pdo,'INSERT','planilla_periodos',$periodoId,'Planilla generada');
@@ -190,6 +242,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── LOAD DETAIL ───────────────────────────────────────────────────
 $periodo  = null;
 $detalle  = [];
+$dist = $proyMap = $repartos = $resumenProy = [];
 if ($action === 'ver' && $id) {
     $stmt = $pdo->prepare("SELECT * FROM planilla_periodos WHERE id=?"); $stmt->execute([$id]); $periodo = $stmt->fetch();
     $detalle = $pdo->prepare("SELECT pd.*, CONCAT(e.nombre,' ',e.apellidos) as empleado_nombre, e.cargo, e.banco
@@ -200,6 +253,9 @@ if ($action === 'ver' && $id) {
         e.cuenta_banco, e.aplica_ihss, e.aplica_rap, e.aplica_isr, e.aplica_credimpulsa
         FROM planilla_detalle pd JOIN empleados e ON pd.empleado_id = e.id WHERE pd.periodo_id=? ORDER BY e.apellidos");
     $stmt2->execute([$id]); $detalle = $stmt2->fetchAll();
+    $dist    = cargarDistribucion($pdo, 'planilla_detalle_proyectos', array_column($detalle, 'id'));
+    $proyMap = proyectosMap($pdo);
+    [$repartos, $resumenProy] = distribuirQuincenal($detalle, $dist);
 }
 
 // ── LIST ──────────────────────────────────────────────────────────
@@ -282,6 +338,15 @@ include __DIR__ . '/includes/header.php';
         <a href="<?= BASE_URL ?>print.php?tipo=pl&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger">
           <i class="fas fa-file-pdf"></i> PDF
         </a>
+        <a href="<?= BASE_URL ?>print.php?tipo=plp&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-diagram-project"></i> Por Proyecto
+        </a>
+        <?php if ($periodo['estado'] !== 'pagada'): ?>
+        <button class="btn btn-sm btn-outline-secondary" onclick="aplicarDistribucion(<?= $periodo['id'] ?>)"
+          title="Reemplaza la distribución de esta planilla por la configurada en cada empleado">
+          <i class="fas fa-rotate"></i> Aplicar distribución de empleados
+        </button>
+        <?php endif; ?>
         <a href="<?= BASE_URL ?>print.php?tipo=plc&id=<?= $periodo['id'] ?>" target="_blank" class="btn btn-sm btn-outline-warning">
           <i class="fas fa-credit-card"></i> Credimpulsa
         </a>
@@ -309,7 +374,7 @@ include __DIR__ . '/includes/header.php';
       <table class="table-ahdeco w-100" style="font-size:.78rem;">
         <thead>
           <tr>
-            <th>#</th><th>Empleado</th><th>Cargo</th>
+            <th>#</th><th>Empleado</th><th>Cargo</th><th>Proyectos</th>
             <th>Días</th><th>Q. Bruta</th><th>IHSS</th><th>RAP</th><th>ISR</th>
             <th>Credimpulsa</th>
             <th>Ded. Total</th><th>Sueldo Neto</th>
@@ -319,6 +384,7 @@ include __DIR__ . '/includes/header.php';
         <tbody>
           <?php $i=1; $totBruto=$totIhssE=$totRap=$totIsr=$totCredimpulsa=$totDed=$totNeto=$totIhssP=$totRapP=0;
           $canEdit = in_array($periodo['estado'], ['procesada','aprobada']);
+          $canDist = $periodo['estado'] !== 'pagada';
           foreach ($detalle as $d): ?>
           <tr>
             <td><?= $i++ ?></td>
@@ -330,6 +396,22 @@ include __DIR__ . '/includes/header.php';
               </a>
             </td>
             <td><?= htmlspecialchars($d['cargo']) ?></td>
+            <td style="white-space:nowrap">
+              <?php foreach ($dist[$d['id']] ?? [] as $dp): ?>
+              <span class="badge bg-light text-dark border" style="font-size:.68rem"
+                title="<?= htmlspecialchars(proyectoLabel($proyMap, (int)$dp['proyecto_id'], true)) ?>">
+                <?= htmlspecialchars(proyectoLabel($proyMap, (int)$dp['proyecto_id'])) ?>
+                <?= fmtPct($dp['pct_salario']) ?>%<?php if ((float)$dp['pct_patronal'] !== (float)$dp['pct_salario']): ?> · P <?= fmtPct($dp['pct_patronal']) ?>%<?php endif; ?>
+              </span><br>
+              <?php endforeach; ?>
+              <?php if (empty($dist[$d['id']])): ?>
+              <span class="text-muted" style="font-size:.72rem">Sin proyecto</span>
+              <?php endif; ?>
+              <?php if ($canDist): ?>
+              <button type="button" class="btn btn-sm btn-link p-0 ms-1 no-print" title="Editar distribución"
+                onclick="editarDist(<?= $d['id'] ?>)"><i class="fas fa-pen" style="font-size:.7rem"></i></button>
+              <?php endif; ?>
+            </td>
             <td class="text-center">
               <?php if ($canEdit): ?>
               <input type="number" min="1" max="15" step="1"
@@ -394,7 +476,7 @@ include __DIR__ . '/includes/header.php';
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="3" class="fw-bold">TOTALES</td>
+            <td colspan="4" class="fw-bold">TOTALES</td>
             <td></td>
             <td class="font-mono"><?= lps($totBruto) ?></td>
             <td class="font-mono text-danger"><?= lps($totIhssE) ?></td>
@@ -420,7 +502,88 @@ include __DIR__ . '/includes/header.php';
   </div>
   <?php endif; ?>
 </div>
+
+  <!-- Resumen por proyecto -->
+  <div class="card mt-3">
+    <div class="card-header"><i class="fas fa-diagram-project"></i> Resumen por Proyecto</div>
+    <div class="card-body p-0" style="overflow-x:auto;">
+      <table class="table-ahdeco w-100" style="font-size:.8rem;">
+        <thead>
+          <tr>
+            <th>Proyecto</th><th class="text-center">Empleados</th><th class="text-end">Bruto</th>
+            <th class="text-end">Deducciones</th><th class="text-end">Neto a Pagar</th>
+            <th class="text-end">IHSS Pat.</th><th class="text-end">RAP Pat.</th><th class="text-end">Costo Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php $tr = ['total_bruto'=>0,'total_deducciones'=>0,'sueldo_neto'=>0,'ihss_patronal'=>0,'rap_patronal'=>0,'costo_total'=>0];
+          foreach ($resumenProy as $pid => $r): foreach ($tr as $k => $_) $tr[$k] += $r[$k]; ?>
+          <tr>
+            <td><?= htmlspecialchars(proyectoLabel($proyMap, $pid, true)) ?></td>
+            <td class="text-center"><?= $r['empleados'] ?></td>
+            <td class="font-mono text-end"><?= lps($r['total_bruto']) ?></td>
+            <td class="font-mono text-end text-danger"><?= lps($r['total_deducciones']) ?></td>
+            <td class="font-mono text-end fw-bold text-success"><?= lps($r['sueldo_neto']) ?></td>
+            <td class="font-mono text-end text-warning"><?= lps($r['ihss_patronal']) ?></td>
+            <td class="font-mono text-end text-warning"><?= lps($r['rap_patronal']) ?></td>
+            <td class="font-mono text-end fw-bold"><?= lps($r['costo_total']) ?></td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="fw-bold">TOTALES</td>
+            <td class="font-mono text-end"><?= lps($tr['total_bruto']) ?></td>
+            <td class="font-mono text-end text-danger"><?= lps($tr['total_deducciones']) ?></td>
+            <td class="font-mono text-end fw-bold text-success"><?= lps($tr['sueldo_neto']) ?></td>
+            <td class="font-mono text-end text-warning"><?= lps($tr['ihss_patronal']) ?></td>
+            <td class="font-mono text-end text-warning"><?= lps($tr['rap_patronal']) ?></td>
+            <td class="font-mono text-end fw-bold"><?= lps($tr['costo_total']) ?></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
 </div><!-- /print-area -->
+
+<!-- Modal: Distribución por proyecto de un empleado -->
+<div class="modal fade" id="modal-dist" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-diagram-project"></i> Distribución por Proyecto — <span id="dist-emp"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-2" style="font-size:.8rem;">
+          Solo afecta a esta planilla. % Salario reparte bruto, deducciones y neto; % Patronal reparte IHSS y RAP patronal.
+        </p>
+        <table class="table table-sm align-middle mb-1" style="font-size:.83rem;">
+          <thead>
+            <tr><th>Proyecto</th><th style="width:110px" class="text-end">% Salario</th><th style="width:110px" class="text-end">% Patronal</th><th style="width:50px"></th></tr>
+          </thead>
+          <tbody id="dist-body"></tbody>
+          <tfoot>
+            <tr>
+              <td><span data-dist-msg></span></td>
+              <td class="text-end font-mono fw-bold" data-tot="pct_salario"></td>
+              <td class="text-end font-mono fw-bold" data-tot="pct_patronal"></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="distPl.add()">
+          <i class="fas fa-plus"></i> Agregar proyecto
+        </button>
+        <div id="dist-preview" class="mt-3" style="font-size:.78rem;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn-ahdeco" onclick="guardarDist()"><i class="fas fa-save"></i> Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
 <?php endif; ?>
 
 <!-- Modal: Generar Planilla -->
@@ -536,5 +699,80 @@ async function submitPlanilla() {
   } catch { Toast.show('Error de conexión','error'); btn.disabled=false; btn.innerHTML='<i class=\"fas fa-cog\"></i> Generar Planilla'; }
 }
 ";
+
+if ($periodo) {
+    $plFilas = [];
+    foreach ($detalle as $d) {
+        $plFilas[$d['id']] = [
+            'nombre'   => $d['empleado_nombre'],
+            'bruto'    => (float)$d['total_bruto'],
+            'ded'      => (float)$d['total_deducciones'],
+            'patronal' => (float)$d['ihss_patronal'] + (float)$d['rap_patronal'],
+            'dist'     => $dist[$d['id']] ?? [],
+        ];
+    }
+    $jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+    $extraJs .= 'const PL_PERIODO = ' . (int)$periodo['id'] . ";\n"
+              . 'const PROYECTOS = ' . json_encode(array_values($proyMap), $jsonFlags) . ";\n"
+              . 'const PL_FILAS = ' . json_encode($plFilas ?: new stdClass, $jsonFlags) . ";\n";
+    $extraJs .= <<<'JS'
+const fmtL = n => 'L. ' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const escH = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let distDid = 0, distModal = null, manualDirty = false;
+document.querySelectorAll('.manual-input').forEach(i => i.addEventListener('input', () => manualDirty = true));
+
+const distPl = new DistEditor(document.getElementById('dist-body'), {
+  proyectos: PROYECTOS, campos: ['pct_salario', 'pct_patronal'], onChange: previewDist
+});
+
+function editarDist(did) {
+  distDid = did;
+  document.getElementById('dist-emp').textContent = PL_FILAS[did].nombre;
+  distPl.set(PL_FILAS[did].dist);
+  distModal = distModal || new bootstrap.Modal(document.getElementById('modal-dist'));
+  distModal.show();
+}
+
+function previewDist(ed) {
+  const f = PL_FILAS[distDid], el = document.getElementById('dist-preview');
+  const rows = ed.rows();
+  if (!f || !rows.length) { el.innerHTML = ''; return; }
+  const cod = id => (PROYECTOS.find(p => String(p.id) === String(id)) || {}).codigo || '';
+  el.innerHTML = '<table class="table table-sm mb-0"><thead><tr><th>Proyecto</th>'
+    + '<th class="text-end">Bruto</th><th class="text-end">Neto</th><th class="text-end">IHSS + RAP Pat.</th></tr></thead><tbody>'
+    + rows.map(r => `<tr><td>${escH(cod(r.proyecto_id))}</td>`
+      + `<td class="text-end font-mono">${fmtL(f.bruto * r.pct_salario / 100)}</td>`
+      + `<td class="text-end font-mono">${fmtL((f.bruto - f.ded) * r.pct_salario / 100)}</td>`
+      + `<td class="text-end font-mono">${fmtL(f.patronal * r.pct_patronal / 100)}</td></tr>`).join('')
+    + '</tbody></table>';
+}
+
+async function guardarDist() {
+  const err = distPl.error();
+  if (err) { Toast.show(err, 'error'); return; }
+  if (manualDirty && !confirm('Hay cambios sin guardar en deducciones / días. Si continúa se perderán. ¿Continuar?')) return;
+  const fd = new FormData();
+  fd.append('csrf_token', document.querySelector('[name=csrf_token]')?.value || '');
+  fd.append('_action', 'guardar_distribucion');
+  fd.append('periodo_id', PL_PERIODO);
+  fd.append('detalle_id', distDid);
+  distPl.rows().forEach((r, i) => Object.entries(r).forEach(([k, v]) => fd.append(`dist[${i}][${k}]`, v)));
+  const r = await post('planillas.php', fd);
+  if (r.success) { Toast.show(r.message, 'success'); setTimeout(() => location.reload(), 600); }
+  else Toast.show(r.message, 'error');
+}
+
+async function aplicarDistribucion(pid) {
+  if (!confirm('Se reemplazará la distribución de TODOS los empleados de esta planilla por la configurada en su expediente. ¿Continuar?')) return;
+  const fd = new FormData();
+  fd.append('csrf_token', document.querySelector('[name=csrf_token]')?.value || '');
+  fd.append('_action', 'aplicar_distribucion');
+  fd.append('periodo_id', pid);
+  const r = await post('planillas.php', fd);
+  if (r.success) { Toast.show(r.message, 'success'); setTimeout(() => location.reload(), 800); }
+  else Toast.show(r.message, 'error');
+}
+JS;
+}
 include __DIR__ . '/includes/footer.php';
 ?>

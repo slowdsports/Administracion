@@ -3,8 +3,9 @@ ini_set('display_errors', 0);
 
 session_start();
 require_once __DIR__ . '/config/functions.php';
+require_once __DIR__ . '/config/auth.php';
 if (isset($_SESSION['usuario_id'])) {
-    header('Location: ' . BASE_URL . 'dashboard.php');
+    header('Location: ' . BASE_URL . paginaInicio());
     exit;
 }
 
@@ -29,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['usuario_foto']   = $u['foto'] ?? '';
 
             $pdo->prepare("UPDATE usuarios SET ultimo_acceso = NOW() WHERE id = ?")->execute([$u['id']]);
-            header('Location: ' . BASE_URL . 'dashboard.php');
+            header('Location: ' . BASE_URL . paginaInicio());
             exit;
         } else {
             $error = 'Correo o contraseña incorrectos.';

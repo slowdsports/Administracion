@@ -7,6 +7,7 @@ requireLogin();
 $action = $_GET['action'] ?? 'list';
 $id     = (int)($_GET['id'] ?? 0);
 $ocId   = (int)($_GET['oc_id'] ?? 0);
+$sgId   = (int)($_GET['sg_id'] ?? 0);
 $pagina = 'Orden de Pago';
 
 if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -23,20 +24,29 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
             'factura_proveedor'=>trim($_POST['factura_proveedor']??''),
             'banco'=>trim($_POST['banco']??''),'cuenta_bancaria'=>trim($_POST['cuenta_bancaria']??''),
             'banco_tipo'=>$_POST['banco_tipo']??null,
-            'orden_compra_id'=>$_POST['orden_compra_id']?:null,'cuenta_id'=>$_POST['cuenta_id']?:null,
+            'orden_compra_id'=>$_POST['orden_compra_id']?:null,
+            'solicitud_gastos_id'=>$_POST['solicitud_gastos_id']?:null,
+            'cuenta_id'=>$_POST['cuenta_id']?:null,
             'proyecto_id'=>$_POST['proyecto_id']?:null,'notas'=>trim($_POST['notas']??''),
             'cuenta_bancaria_id'=>$_POST['cuenta_bancaria_id']?:null,
         ];
         try {
             if ($opId) {
-                $pdo->prepare("UPDATE ordenes_pago SET fecha=?,beneficiario=?,beneficiario_tipo=?,proveedor_id=?,empleado_id=?,concepto=?,monto=?,forma_pago=?,numero_cheque=?,factura_proveedor=?,banco=?,cuenta_bancaria=?,banco_tipo=?,orden_compra_id=?,cuenta_id=?,proyecto_id=?,notas=?,cuenta_bancaria_id=? WHERE id=?")
-                    ->execute([$d['fecha'],$d['beneficiario'],$d['beneficiario_tipo'],$d['proveedor_id'],$d['empleado_id'],$d['concepto'],$d['monto'],$d['forma_pago'],$d['numero_cheque'],$d['factura_proveedor'],$d['banco'],$d['cuenta_bancaria'],$d['banco_tipo'],$d['orden_compra_id'],$d['cuenta_id'],$d['proyecto_id'],$d['notas'],$d['cuenta_bancaria_id'],$opId]);
+                $pdo->prepare("UPDATE ordenes_pago SET fecha=?,beneficiario=?,beneficiario_tipo=?,proveedor_id=?,empleado_id=?,concepto=?,monto=?,forma_pago=?,numero_cheque=?,factura_proveedor=?,banco=?,cuenta_bancaria=?,banco_tipo=?,orden_compra_id=?,solicitud_gastos_id=?,cuenta_id=?,proyecto_id=?,notas=?,cuenta_bancaria_id=? WHERE id=?")
+                    ->execute([$d['fecha'],$d['beneficiario'],$d['beneficiario_tipo'],$d['proveedor_id'],$d['empleado_id'],$d['concepto'],$d['monto'],$d['forma_pago'],$d['numero_cheque'],$d['factura_proveedor'],$d['banco'],$d['cuenta_bancaria'],$d['banco_tipo'],$d['orden_compra_id'],$d['solicitud_gastos_id'],$d['cuenta_id'],$d['proyecto_id'],$d['notas'],$d['cuenta_bancaria_id'],$opId]);
                 jsonOk([],'Orden de pago actualizada.');
             } else {
+                // Heredar proceso_id desde la liquidación vinculada
+                $procesoId = null;
+                if ($d['solicitud_gastos_id']) {
+                    $ps = $pdo->prepare("SELECT proceso_id FROM solicitud_gastos WHERE id=?");
+                    $ps->execute([$d['solicitud_gastos_id']]);
+                    $procesoId = $ps->fetchColumn() ?: null;
+                }
                 $num = generarNumero($pdo,'ordenes_pago','numero',getConfig($pdo,'prefijo_op','OP'));
-                $pdo->prepare("INSERT INTO ordenes_pago (numero,fecha,beneficiario,beneficiario_tipo,proveedor_id,empleado_id,concepto,monto,forma_pago,numero_cheque,factura_proveedor,banco,cuenta_bancaria,banco_tipo,orden_compra_id,cuenta_id,proyecto_id,notas,cuenta_bancaria_id,estado,aprobador1_id)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pendiente',?)")
-                    ->execute([$num,$d['fecha'],$d['beneficiario'],$d['beneficiario_tipo'],$d['proveedor_id'],$d['empleado_id'],$d['concepto'],$d['monto'],$d['forma_pago'],$d['numero_cheque'],$d['factura_proveedor'],$d['banco'],$d['cuenta_bancaria'],$d['banco_tipo'],$d['orden_compra_id'],$d['cuenta_id'],$d['proyecto_id'],$d['notas'],$d['cuenta_bancaria_id'],currentUser()['id']]);
+                $pdo->prepare("INSERT INTO ordenes_pago (numero,proceso_id,fecha,beneficiario,beneficiario_tipo,proveedor_id,empleado_id,concepto,monto,forma_pago,numero_cheque,factura_proveedor,banco,cuenta_bancaria,banco_tipo,orden_compra_id,solicitud_gastos_id,cuenta_id,proyecto_id,notas,cuenta_bancaria_id,estado,aprobador1_id)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pendiente',?)")
+                    ->execute([$num,$procesoId,$d['fecha'],$d['beneficiario'],$d['beneficiario_tipo'],$d['proveedor_id'],$d['empleado_id'],$d['concepto'],$d['monto'],$d['forma_pago'],$d['numero_cheque'],$d['factura_proveedor'],$d['banco'],$d['cuenta_bancaria'],$d['banco_tipo'],$d['orden_compra_id'],$d['solicitud_gastos_id'],$d['cuenta_id'],$d['proyecto_id'],$d['notas'],$d['cuenta_bancaria_id'],currentUser()['id']]);
                 $opId = $pdo->lastInsertId();
                 jsonOk(['id'=>$opId],'Orden de pago creada.');
             }
@@ -56,33 +66,57 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
     jsonErr('AcciÃ³n desconocida.');
 }
 
-// Load OC data for pre-filling
+// Pre-carga desde Orden de Compra
 $ocData = null;
 if ($ocId) {
-    $s=$pdo->prepare("SELECT oc.*,p.nombre as prov_nombre FROM ordenes_compra oc JOIN proveedores p ON oc.proveedor_id=p.id WHERE oc.id=?");
+    $s=$pdo->prepare("SELECT oc.*,p.nombre as prov_nombre,sc.descripcion as sc_descripcion FROM ordenes_compra oc JOIN proveedores p ON oc.proveedor_id=p.id LEFT JOIN solicitud_compra sc ON oc.solicitud_id=sc.id WHERE oc.id=?");
     $s->execute([$ocId]); $ocData=$s->fetch();
 }
 
+// Pre-carga desde Solicitud de Gastos (liquidación de viáticos)
+$sgData = null;
+if ($sgId) {
+    $s=$pdo->prepare("SELECT sg.*,CONCAT(e.nombre,' ',e.apellidos) as emp_nombre,
+        gv.numero as gv_numero, gv.id as gv_id
+        FROM solicitud_gastos sg
+        JOIN empleados e ON sg.empleado_id=e.id
+        LEFT JOIN gastos_viaje gv ON sg.viaje_id=gv.id
+        WHERE sg.id=?");
+    $s->execute([$sgId]); $sgData=$s->fetch();
+}
+
 $op = null;
-$traza = ['sc'=>null,'co'=>null,'oc'=>null];
+$traza = ['sc'=>null,'co'=>null,'oc'=>null,'sg'=>null,'gv'=>null];
 if (in_array($action,['ver','editar']) && $id) {
     $s=$pdo->prepare("SELECT op.*,p.nombre as prov_nombre FROM ordenes_pago op LEFT JOIN proveedores p ON op.proveedor_id=p.id WHERE op.id=?");
     $s->execute([$id]); $op=$s->fetch();
-    if ($action==='ver' && $op && $op['orden_compra_id']) {
-        // Orden de compra
-        $t=$pdo->prepare("SELECT id,numero,estado,solicitud_id,cotizacion_id FROM ordenes_compra WHERE id=?");
-        $t->execute([$op['orden_compra_id']]); $traza['oc']=$t->fetch();
-        if ($traza['oc']) {
-            // Solicitud
-            if ($traza['oc']['solicitud_id']) {
-                $t2=$pdo->prepare("SELECT id,numero,estado FROM solicitud_compra WHERE id=?");
-                $t2->execute([$traza['oc']['solicitud_id']]); $traza['sc']=$t2->fetch();
+    if ($action==='ver' && $op) {
+        if ($op['orden_compra_id']) {
+            $t=$pdo->prepare("SELECT id,numero,estado,solicitud_id,cotizacion_id FROM ordenes_compra WHERE id=?");
+            $t->execute([$op['orden_compra_id']]); $traza['oc']=$t->fetch();
+            if ($traza['oc']) {
+                if ($traza['oc']['solicitud_id']) {
+                    $t2=$pdo->prepare("SELECT id,numero,estado FROM solicitud_compra WHERE id=?");
+                    $t2->execute([$traza['oc']['solicitud_id']]); $traza['sc']=$t2->fetch();
+                }
+                if ($traza['oc']['cotizacion_id']) {
+                    $t3=$pdo->prepare("SELECT id,numero,estado FROM cotizaciones WHERE id=?");
+                    $t3->execute([$traza['oc']['cotizacion_id']]); $traza['co']=$t3->fetch();
+                }
             }
-            // CotizaciÃ³n
-            if ($traza['oc']['cotizacion_id']) {
-                $t3=$pdo->prepare("SELECT id,numero,estado FROM cotizaciones WHERE id=?");
-                $t3->execute([$traza['oc']['cotizacion_id']]); $traza['co']=$t3->fetch();
-            }
+        }
+        if ($op['solicitud_gastos_id'] ?? null) {
+            try {
+                $t4=$pdo->prepare("SELECT sg.id,sg.numero,sg.estado,sg.proceso_id,sg.viaje_id,
+                    CONCAT(e.nombre,' ',e.apellidos) as emp_nombre
+                    FROM solicitud_gastos sg JOIN empleados e ON sg.empleado_id=e.id
+                    WHERE sg.id=?");
+                $t4->execute([$op['solicitud_gastos_id']]); $traza['sg']=$t4->fetch();
+                if ($traza['sg'] && ($traza['sg']['viaje_id'] ?? null)) {
+                    $t5=$pdo->prepare("SELECT id,numero,estado,tipo FROM gastos_viaje WHERE id=?");
+                    $t5->execute([$traza['sg']['viaje_id']]); $traza['gv']=$t5->fetch();
+                }
+            } catch (\Exception $e) { /* columnas pendientes de migración */ }
         }
     }
 }
@@ -92,6 +126,13 @@ $empleados    = $pdo->query("SELECT id,CONCAT(nombre,' ',apellidos) as nombre,ba
 $proyectos    = $pdo->query("SELECT id,nombre FROM proyectos WHERE estado='activo'")->fetchAll();
 $cuentas      = $pdo->query("SELECT id,codigo,nombre FROM cuentas_contables WHERE activa=1 AND tipo='gasto' ORDER BY codigo")->fetchAll();
 $ocList       = $pdo->query("SELECT id,numero,total FROM ordenes_compra WHERE estado IN ('emitida','parcial') ORDER BY numero DESC")->fetchAll();
+try {
+    $sgList = $pdo->query("SELECT sg.*, CONCAT(e.nombre,' ',e.apellidos) as emp_nombre
+        FROM solicitud_gastos sg JOIN empleados e ON sg.empleado_id=e.id
+        WHERE sg.estado='aprobada' ORDER BY sg.id DESC")->fetchAll();
+} catch (\Exception $e) {
+    $sgList = [];
+}
 $bancos           = $pdo->query("SELECT nombre FROM cat_bancos ORDER BY nombre")->fetchAll(PDO::FETCH_COLUMN);
 $cuentasBancarias = $pdo->query("SELECT id, CONCAT(nombre,' — ',banco) AS label FROM cuentas_bancarias WHERE activa=1 ORDER BY nombre")->fetchAll();
 $lista = [];
@@ -120,10 +161,11 @@ include __DIR__ . '/includes/header.php';
 <?php if ($action==='list'): ?>
 <div class="card"><div class="card-body p-0">
   <table id="tbl-op" class="table-ahdeco w-100">
-    <thead><tr><th>NÃºmero</th><th>Fecha</th><th>Beneficiario</th><th>Concepto</th><th>Monto</th><th>Forma Pago</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>Proceso</th><th>Número</th><th>Fecha</th><th>Beneficiario</th><th>Concepto</th><th>Monto</th><th>Forma Pago</th><th>Estado</th><th></th></tr></thead>
     <tbody>
       <?php foreach($lista as $r): ?>
       <tr>
+        <td class="font-mono text-primary fw-bold"><?= ($r['proceso_id'] ?? null) ? formatProceso($r['proceso_id']) : '—' ?></td>
         <td class="font-mono"><?= $r['numero'] ?></td>
         <td><?= fmtFecha($r['fecha']) ?></td>
         <td><?= htmlspecialchars($r['beneficiario']) ?></td>
@@ -141,69 +183,99 @@ include __DIR__ . '/includes/header.php';
         </td>
       </tr>
       <?php endforeach; ?>
-      <?php if(!$lista): ?><tr><td colspan="8" class="text-center text-muted py-4">Sin Ã³rdenes de pago</td></tr><?php endif; ?>
+      <?php if(!$lista): ?><tr><td colspan="9" class="text-center text-muted py-4">Sin órdenes de pago</td></tr><?php endif; ?>
     </tbody>
   </table>
 </div></div>
 
 <?php elseif ($action==='ver' && $op): ?>
 
-<!-- Cadena de proceso -->
-<div class="trace-chain">
+<!-- Cadena de proceso: viáticos o compras -->
+<?php if ($traza['gv'] || $traza['sg']): ?>
+<div class=”trace-chain mb-3”>
+  <?php if($traza['gv']): ?>
+  <a href=”<?= BASE_URL ?>gastos_viajes.php?action=ver&id=<?= $traza['gv']['id'] ?>” class=”trace-step linked”>
+    <i class=”fas <?= tipoAnticipoIcon($traza['gv']['tipo'] ?? 'viaje') ?>”></i>
+    <span class=”trace-step-label”>Anticipo<?= ($traza['gv']['tipo'] ?? '') === 'compra' ? ' de Compra' : ' de Viaje' ?></span>
+    <span class=”trace-step-num”><?= $traza['gv']['numero'] ?></span>
+    <span class=”trace-step-badge”><?= estadoBadge($traza['gv']['estado']) ?></span>
+  </a>
+  <?php endif; ?>
+  <?php if($traza['sg']): ?>
+  <a href=”<?= BASE_URL ?>gastos_solicitud.php?action=ver&id=<?= $traza['sg']['id'] ?>” class=”trace-step linked”>
+    <i class=”fas fa-file-invoice-dollar”></i>
+    <span class=”trace-step-label”>Liquidación de Gastos</span>
+    <span class=”trace-step-num”><?= $traza['sg']['numero'] ?></span>
+    <span class=”trace-step-badge”><?= estadoBadge($traza['sg']['estado']) ?></span>
+  </a>
+  <?php endif; ?>
+  <div class=”trace-step active”>
+    <i class=”fas fa-money-bill-transfer”></i>
+    <span class=”trace-step-label”>Orden de Pago</span>
+    <span class=”trace-step-num”><?= $op['numero'] ?></span>
+    <span class=”trace-step-badge”><?= estadoBadge($op['estado']) ?></span>
+  </div>
+</div>
+<?php else: ?>
+<div class=”trace-chain”>
   <?php if($traza['sc']): ?>
-  <a href="<?= BASE_URL ?>compras_solicitud.php?action=ver&id=<?= $traza['sc']['id'] ?>" class="trace-step linked">
-    <i class="fas fa-cart-plus"></i>
-    <span class="trace-step-label">Solicitud</span>
-    <span class="trace-step-num"><?= $traza['sc']['numero'] ?></span>
-    <span class="trace-step-badge"><?= estadoBadge($traza['sc']['estado']) ?></span>
+  <a href=”<?= BASE_URL ?>compras_solicitud.php?action=ver&id=<?= $traza['sc']['id'] ?>” class=”trace-step linked”>
+    <i class=”fas fa-cart-plus”></i>
+    <span class=”trace-step-label”>Solicitud</span>
+    <span class=”trace-step-num”><?= $traza['sc']['numero'] ?></span>
+    <span class=”trace-step-badge”><?= estadoBadge($traza['sc']['estado']) ?></span>
   </a>
   <?php else: ?>
-  <div class="trace-step inactive">
-    <i class="fas fa-cart-plus"></i>
-    <span class="trace-step-label">Solicitud</span>
-    <span class="trace-step-num">â€”</span>
+  <div class=”trace-step inactive”>
+    <i class=”fas fa-cart-plus”></i>
+    <span class=”trace-step-label”>Solicitud</span>
+    <span class=”trace-step-num”>—</span>
   </div>
   <?php endif; ?>
   <?php if($traza['co']): ?>
-  <a href="<?= BASE_URL ?>compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>" class="trace-step linked">
-    <i class="fas fa-file-lines"></i>
-    <span class="trace-step-label">CotizaciÃ³n</span>
-    <span class="trace-step-num"><?= $traza['co']['numero'] ?></span>
-    <span class="trace-step-badge"><?= estadoBadge($traza['co']['estado']) ?></span>
+  <a href=”<?= BASE_URL ?>compras_cotizaciones.php?action=ver&id=<?= $traza['co']['id'] ?>” class=”trace-step linked”>
+    <i class=”fas fa-file-lines”></i>
+    <span class=”trace-step-label”>Cotización</span>
+    <span class=”trace-step-num”><?= $traza['co']['numero'] ?></span>
+    <span class=”trace-step-badge”><?= estadoBadge($traza['co']['estado']) ?></span>
   </a>
   <?php else: ?>
-  <div class="trace-step inactive">
-    <i class="fas fa-file-lines"></i>
-    <span class="trace-step-label">CotizaciÃ³n</span>
-    <span class="trace-step-num">â€”</span>
+  <div class=”trace-step inactive”>
+    <i class=”fas fa-file-lines”></i>
+    <span class=”trace-step-label”>Cotización</span>
+    <span class=”trace-step-num”>—</span>
   </div>
   <?php endif; ?>
   <?php if($traza['oc']): ?>
-  <a href="<?= BASE_URL ?>compras_orden.php?action=ver&id=<?= $traza['oc']['id'] ?>" class="trace-step linked">
-    <i class="fas fa-file-circle-check"></i>
-    <span class="trace-step-label">Orden de Compra</span>
-    <span class="trace-step-num"><?= $traza['oc']['numero'] ?></span>
-    <span class="trace-step-badge"><?= estadoBadge($traza['oc']['estado']) ?></span>
+  <a href=”<?= BASE_URL ?>compras_orden.php?action=ver&id=<?= $traza['oc']['id'] ?>” class=”trace-step linked”>
+    <i class=”fas fa-file-circle-check”></i>
+    <span class=”trace-step-label”>Orden de Compra</span>
+    <span class=”trace-step-num”><?= $traza['oc']['numero'] ?></span>
+    <span class=”trace-step-badge”><?= estadoBadge($traza['oc']['estado']) ?></span>
   </a>
   <?php else: ?>
-  <div class="trace-step inactive">
-    <i class="fas fa-file-circle-check"></i>
-    <span class="trace-step-label">Orden de Compra</span>
-    <span class="trace-step-num">â€”</span>
+  <div class=”trace-step inactive”>
+    <i class=”fas fa-file-circle-check”></i>
+    <span class=”trace-step-label”>Orden de Compra</span>
+    <span class=”trace-step-num”>—</span>
   </div>
   <?php endif; ?>
-  <div class="trace-step active">
-    <i class="fas fa-money-bill-transfer"></i>
-    <span class="trace-step-label">Orden de Pago</span>
-    <span class="trace-step-num"><?= $op['numero'] ?></span>
-    <span class="trace-step-badge"><?= estadoBadge($op['estado']) ?></span>
+  <div class=”trace-step active”>
+    <i class=”fas fa-money-bill-transfer”></i>
+    <span class=”trace-step-label”>Orden de Pago</span>
+    <span class=”trace-step-num”><?= $op['numero'] ?></span>
+    <span class=”trace-step-badge”><?= estadoBadge($op['estado']) ?></span>
   </div>
 </div>
+<?php endif; ?>
 
 <div id="print-area">
 <div class="card">
   <div class="card-header">
-    <i class="fas fa-money-bill-transfer"></i> ORDEN DE PAGO <?= $op['numero'] ?> â€” <?= estadoBadge($op['estado']) ?>
+    <i class=”fas fa-money-bill-transfer”></i> ORDEN DE PAGO <?= $op['numero'] ?> — <?= estadoBadge($op['estado']) ?>
+    <?php if ($op['proceso_id'] ?? null): ?>
+    <span class=”badge bg-primary ms-2 font-mono” title=”Número de proceso compartido”>Proceso <?= formatProceso($op['proceso_id']) ?></span>
+    <?php endif; ?>
     <div class="ms-auto d-flex gap-2 no-print">
       <?php if($op['estado']==='pendiente'): ?>
       <button class="btn btn-sm btn-success" onclick="cambiarEstado('compras_pago.php',<?=$op['id']?>,'aprobada','ordenes_pago',()=>location.reload())"><i class="fas fa-check"></i> Aprobar</button>
@@ -316,12 +388,32 @@ include __DIR__ . '/includes/header.php';
           <option value="cheques">Cheques</option>
         </select>
       </div>
-      <div class="col-md-4">
-        <label class="form-label">Orden de Compra</label>
-        <select name="orden_compra_id" class="form-select">
-          <option value="">-- Ninguna --</option>
-          <?php foreach($ocList as $oc): ?><option value="<?= $oc['id'] ?>" <?= $ocId==$oc['id']?'selected':'' ?>><?= $oc['numero'] ?> â€” <?= lps($oc['total']) ?></option><?php endforeach; ?>
+      <div class=”col-md-4”>
+        <label class=”form-label”>Orden de Compra</label>
+        <select name=”orden_compra_id” class=”form-select”>
+          <option value=””>-- Ninguna --</option>
+          <?php foreach($ocList as $oc): ?><option value=”<?= $oc['id'] ?>” <?= $ocId==$oc['id']?'selected':'' ?>><?= $oc['numero'] ?> — <?= lps($oc['total']) ?></option><?php endforeach; ?>
         </select>
+      </div>
+      <div class=”col-md-8”>
+        <label class=”form-label”>Liquidación de Viáticos (Solicitud de Gastos) <small class=”text-muted”>— hereda el número de proceso</small></label>
+        <select name=”solicitud_gastos_id” class=”form-select” id=”sel-sg-op” onchange=”setSgData(this)”>
+          <option value=””>— Ninguna —</option>
+          <?php
+          $selSgId = $sgData ? $sgData['id'] : ($op['solicitud_gastos_id'] ?? 0);
+          foreach($sgList as $sg): ?>
+          <option value=”<?= $sg['id'] ?>”
+            data-monto=”<?= $sg['monto_total'] ?>”
+            data-emp=”<?= htmlspecialchars($sg['emp_nombre']) ?>”
+            data-proceso=”<?= ($sg['proceso_id'] ?? null) ? formatProceso($sg['proceso_id']) : '' ?>”
+            <?= $selSgId==$sg['id']?'selected':'' ?>>
+            <?= $sg['numero'] ?><?= ($sg['proceso_id'] ?? null) ? ' [Proceso '.formatProceso($sg['proceso_id']).']' : '' ?>
+            — <?= htmlspecialchars($sg['emp_nombre']) ?>
+            — <?= lps($sg['monto_total']) ?>
+          </option>
+          <?php endforeach; ?>
+        </select>
+        <div id=”sg-proceso-badge” class=”mt-1”></div>
       </div>
       <div class="col-md-4">
         <label class="form-label">Proyecto</label>
@@ -331,7 +423,7 @@ include __DIR__ . '/includes/header.php';
         <label class="form-label">Cuenta Contable</label>
         <select name="cuenta_id" class="form-select"><option value="">--</option><?php foreach($cuentas as $c): ?><option value="<?= $c['id'] ?>"><?= $c['codigo'] ?> <?= htmlspecialchars($c['nombre']) ?></option><?php endforeach; ?></select>
       </div>
-      <div class="col-12"><label class="form-label">Concepto / DescripciÃ³n *</label><textarea name="concepto" class="form-control" rows="2" required><?= $ocData?'Pago OC '.$ocData['numero'].' - '.htmlspecialchars($ocData['prov_nombre']):'' ?></textarea></div>
+      <div class="col-12"><label class="form-label">Concepto / DescripciÃ³n *</label><textarea name="concepto" class="form-control" rows="2" required><?= $ocData?htmlspecialchars($ocData['sc_descripcion'] ?: ('Pago OC '.$ocData['numero'].' - '.$ocData['prov_nombre'])):'' ?></textarea></div>
       <div class="col-12"><label class="form-label">Notas</label><input type="text" name="notas" class="form-control"></div>
     </div>
     <div class="mt-4 d-flex gap-2">
@@ -350,6 +442,16 @@ $empBancosJson = json_encode(array_column(array_map(fn($e)=>[
     'id'=>$e['id'],'banco'=>$e['banco']??'','cuenta'=>$e['cuenta_banco']??'','tipo'=>''
 ],$empleados),null,'id'));
 
+// Pre-fill desde sg_id (botón Crear OP desde la liquidación)
+$sgPrefill = '';
+if ($sgData) {
+    $sgPrefill = "
+document.addEventListener('DOMContentLoaded', function() {
+    const sel = document.getElementById('sel-sg-op');
+    if (sel) { sel.value = '{$sgData['id']}'; $(sel).trigger('change'); setSgData(sel); }
+});";
+}
+
 $extraJs = "
 initDataTable('#tbl-op');
 const provBancos=" . $provBancosJson . ";
@@ -365,6 +467,27 @@ function updateBenType(){
   const activeSel=v==='proveedor'?document.getElementById('sel-prov-op'):v==='empleado'?document.querySelector('[name=empleado_id]'):null;
   if(activeSel&&activeSel.value) setBenef(activeSel);
 }
+function setSgData(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !sel.value) {
+    document.getElementById('sg-proceso-badge').innerHTML = '';
+    return;
+  }
+  const monto   = opt.dataset.monto;
+  const emp     = opt.dataset.emp;
+  const proceso = opt.dataset.proceso;
+  const inpMonto  = document.getElementById('inp-monto');
+  const inpBenef  = document.getElementById('inp-benef');
+  const tipoBen   = document.getElementById('tipo-ben');
+  if (inpMonto && monto)  inpMonto.value = parseFloat(monto).toFixed(2);
+  if (inpBenef && emp)    inpBenef.value = emp;
+  if (tipoBen)            tipoBen.value  = 'empleado';
+  updateBenType();
+  if (proceso) {
+    document.getElementById('sg-proceso-badge').innerHTML =
+      '<span class=\"badge bg-primary font-mono\">Proceso ' + proceso + ' será asignado a esta OP</span>';
+  }
+}
 function setBenef(sel){
   const name=sel.options[sel.selectedIndex]?.text||'';
   document.getElementById('inp-benef').value=name;
@@ -377,12 +500,13 @@ function setBenef(sel){
     const selBanco=document.getElementById('sel-banco');
     const inpCuenta=document.getElementById('inp-cuenta-bancaria');
     const selTipo=document.getElementById('sel-banco-tipo');
-    if(selBanco&&b.banco) selBanco.value=b.banco;
+    if(selBanco&&b.banco){ selBanco.value=b.banco; $(selBanco).trigger('change'); }
     if(inpCuenta) inpCuenta.value=b.cuenta||'';
-    if(selTipo) selTipo.value=b.tipo||'';
+    if(selTipo){ selTipo.value=b.tipo||''; $(selTipo).trigger('change'); }
   }
 }
 bindAjaxForm('form-op',r=>{ Toast.show(r.message,'success'); setTimeout(()=>location.href='compras_pago.php',1200); });
+" . $sgPrefill . "
 ";
 include __DIR__ . '/includes/footer.php';
 ?>

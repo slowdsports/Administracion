@@ -6,7 +6,8 @@ requireLogin();
 
 $tipo = $_GET['tipo'] ?? '';
 $id   = (int)($_GET['id'] ?? 0);
-if (!$id || !in_array($tipo, ['sc','oc','op','pl','gv','sg','proceso','pa','pb','vac','per','trabajo','salario','referencia','tiempo','plv','pav','pbv','liq','cc','memo','acta','plc'])) { http_response_code(400); die('Parámetros inválidos.'); }
+if (!$id || !in_array($tipo, ['sc','oc','op','pl','gv','sg','proceso','pa','pb','vac','per','trabajo','salario','referencia','tiempo','plv','pav','pbv','liq','cc','memo','acta','plc','gva','plp','pbp'])) { http_response_code(400); die('Parámetros inválidos.'); }
+if (!puedeVerDocumento($tipo)) { http_response_code(403); die('No tiene permiso para ver este documento.'); }
 
 $config  = getAllConfig($pdo);
 $org     = $config['nombre_organizacion'] ?? 'AHDECO';
@@ -102,6 +103,25 @@ switch ($tipo) {
         $docNum = "{$mes} {$doc['anio']} — {$quin}";
         break;
 
+    // ── Planilla Quincenal distribuida por Proyecto ──────────────────
+    case 'plp':
+        $s = $pdo->prepare("SELECT * FROM planilla_periodos WHERE id = ?");
+        $s->execute([$id]); $doc = $s->fetch();
+        if (!$doc) die('Planilla no encontrada.');
+        $s2 = $pdo->prepare("SELECT pd.*, CONCAT(e.nombre,' ',e.apellidos) AS empleado_nombre, e.cargo
+            FROM planilla_detalle pd
+            JOIN empleados e ON pd.empleado_id = e.id
+            WHERE pd.periodo_id = ? ORDER BY e.apellidos, e.nombre");
+        $s2->execute([$id]); $detalle = $s2->fetchAll();
+        $proyMap = proyectosMap($pdo);
+        [$repartos, $resumenProy] = distribuirQuincenal($detalle,
+            cargarDistribucion($pdo, 'planilla_detalle_proyectos', array_column($detalle, 'id')));
+        $mes    = $meses[$doc['mes'] - 1] ?? '';
+        $quin   = $doc['quincena'] === 'primera' ? '1ª Quincena (1-15)' : '2ª Quincena (16-31)';
+        $title  = 'PLANILLA QUINCENAL POR PROYECTO';
+        $docNum = "{$mes} {$doc['anio']} — {$quin}";
+        break;
+
     // ── Reporte de Deducciones Credimpulsa ───────────────────────────
     case 'plc':
         $s = $pdo->prepare("SELECT * FROM planilla_periodos WHERE id = ?");
@@ -120,6 +140,25 @@ switch ($tipo) {
         $docNum = "{$mes} {$doc['anio']} — {$quin}";
         break;
 
+    // ── Voucher de Alimentación de Viaje ─────────────────────────
+    case 'gva':
+        $s = $pdo->prepare("SELECT gv.*,
+            CONCAT(e.nombre,' ',e.apellidos) AS emp_nombre,
+            e.identidad AS emp_identidad, e.cargo AS emp_cargo,
+            e.banco, e.cuenta_banco,
+            p.codigo AS proy_nombre,
+            CONCAT(a.nombre,' ',a.apellidos) AS aprobador_nombre
+            FROM gastos_viaje gv
+            JOIN empleados e ON gv.empleado_id = e.id
+            LEFT JOIN proyectos p ON gv.proyecto_id = p.id
+            LEFT JOIN empleados a ON gv.aprobador_id = a.id
+            WHERE gv.id = ? AND gv.monto_alimentacion > 0");
+        $s->execute([$id]); $doc = $s->fetch();
+        if (!$doc) die('Anticipo no encontrado o sin monto de alimentación.');
+        $title  = 'VOUCHER DE ALIMENTACIÓN';
+        $docNum = $doc['numero'];
+        break;
+
     // ── Gasto de Viaje ─────────────────────────────────────────────
     case 'gv':
         $s = $pdo->prepare("SELECT gv.*, CONCAT(e.nombre,' ',e.apellidos) AS emp_nombre, p.codigo AS proy_nombre,
@@ -135,7 +174,7 @@ switch ($tipo) {
             LEFT JOIN cuentas_contables cc ON d.cuenta_id = cc.id
             WHERE d.viaje_id = ? ORDER BY d.id");
         $s2->execute([$id]); $detalle = $s2->fetchAll();
-        $title  = 'SOLICITUD DE ANTICIPO DE VIÁTICOS';
+        $title  = $doc['tipo'] === 'compra' ? 'SOLICITUD DE ANTICIPO PARA COMPRA' : 'SOLICITUD DE ANTICIPO DE VIÁTICOS';
         $docNum = $doc['numero'];
         break;
 
@@ -144,7 +183,7 @@ switch ($tipo) {
         $s = $pdo->prepare("SELECT sg.*, CONCAT(e.nombre,' ',e.apellidos) AS emp_nombre,
             e.identidad AS emp_identidad, e.cargo AS emp_cargo,
             p.codigo AS proy_nombre,
-            gv.numero AS gv_numero, gv.id AS gv_id, gv.viaticos_anticipados,
+            gv.numero AS gv_numero, gv.id AS gv_id, gv.viaticos_anticipados, gv.tipo AS gv_tipo,
             gv.monto_alimentacion, gv.fecha_salida AS gv_fecha_salida,
             gv.fecha_regreso AS gv_fecha_regreso, gv.destino AS gv_destino,
             CONCAT(a.nombre,' ',a.apellidos) AS aprobador_nombre
@@ -190,6 +229,23 @@ switch ($tipo) {
         $s2->execute([$id]); $detalle = $s2->fetchAll();
         $pbTipos = ['decimo_tercero' => 'Décimo Tercer Mes', 'decimo_cuarto' => 'Décimo Cuarto Mes'];
         $title  = 'PLANILLA DE BENEFICIOS — ' . strtoupper($pbTipos[$doc['tipo']] ?? $doc['tipo']);
+        $docNum = $doc['numero'];
+        break;
+
+    // ── Planilla de Beneficios distribuida por Proyecto ───────────────
+    case 'pbp':
+        $s = $pdo->prepare("SELECT * FROM planilla_beneficios WHERE id = ?");
+        $s->execute([$id]); $doc = $s->fetch();
+        if (!$doc) die('Planilla de beneficios no encontrada.');
+        $s2 = $pdo->prepare("SELECT pbd.*, CONCAT(e.nombre,' ',e.apellidos) AS emp_nombre, e.cargo
+            FROM planilla_beneficios_detalle pbd JOIN empleados e ON pbd.empleado_id = e.id
+            WHERE pbd.beneficio_id = ? ORDER BY e.apellidos, e.nombre");
+        $s2->execute([$id]); $detalle = $s2->fetchAll();
+        $proyMap = proyectosMap($pdo);
+        [$repartos, $resumenProy] = distribuirBeneficios($detalle,
+            cargarDistribucion($pdo, 'planilla_beneficios_detalle_proyectos', array_column($detalle, 'id')));
+        $pbTipos = ['decimo_tercero' => 'Décimo Tercer Mes', 'decimo_cuarto' => 'Décimo Cuarto Mes'];
+        $title  = strtoupper($pbTipos[$doc['tipo']] ?? $doc['tipo']) . ' POR PROYECTO';
         $docNum = $doc['numero'];
         break;
 
@@ -245,6 +301,10 @@ switch ($tipo) {
         $s2->execute([$id]); $detalle = $s2->fetchAll();
         $mes    = $meses[$doc['mes'] - 1] ?? '';
         $quin   = $doc['quincena'] === 'primera' ? '1ª Quincena (1-15)' : '2ª Quincena (16-31)';
+        // Distribución por proyecto (el donante requiere el recibo firmado por el empleado)
+        $proyMap = proyectosMap($pdo);
+        $distV   = cargarDistribucion($pdo, 'planilla_detalle_proyectos', array_column($detalle, 'id'));
+        [$repartosV] = distribuirQuincenal($detalle, $distV);
         $title  = 'RECIBOS DE QUINCENA';
         $docNum = "{$mes} {$doc['anio']} — {$quin}";
         break;
@@ -275,6 +335,9 @@ switch ($tipo) {
             WHERE pbd.beneficio_id = ? ORDER BY e.apellidos, e.nombre");
         $s2->execute([$id]); $detalle = $s2->fetchAll();
         $pbvTipos = ['decimo_tercero' => 'Décimo Tercer Mes', 'decimo_cuarto' => 'Décimo Cuarto Mes'];
+        $proyMap = proyectosMap($pdo);
+        $distV   = cargarDistribucion($pdo, 'planilla_beneficios_detalle_proyectos', array_column($detalle, 'id'));
+        [$repartosV] = distribuirBeneficios($detalle, $distV);
         $title  = 'RECIBOS DE BENEFICIO — ' . strtoupper($pbvTipos[$doc['tipo']] ?? $doc['tipo']);
         $docNum = $doc['numero'];
         break;
@@ -473,12 +536,42 @@ function sigProvBlock(string $name, string $label): string {
 }
 endif; // function_exists('resolverFirmantesDinamicos')
 
+// ── Tabla "Distribución por Proyecto" de los recibos plv / pbv ─────
+// $cols: [clave => etiqueta]; la primera clave es el porcentaje.
+if (!function_exists('voucherDistTabla')):
+function voucherDistTabla(array $rep, array $proyMap, array $cols): string {
+    $th  = 'padding:5px 8px;text-align:right;font-weight:700';
+    $td  = "padding:6px 8px;text-align:right;font-family:'Courier New',monospace";
+    $pctKey = array_key_first($cols);
+    $html = '<div class="section-head" style="margin-top:12px">Distribución por Proyecto</div>'
+          . '<div class="items-wrap" style="padding:0 28px;margin-top:8px">'
+          . '<table style="width:100%;border-collapse:collapse;font-size:8.5pt"><thead>'
+          . '<tr style="border-bottom:1.5px solid #cbd5e1;color:#64748b;font-size:7.5pt">'
+          . '<th style="padding:5px 8px;text-align:left;font-weight:700">PROYECTO</th>';
+    foreach ($cols as $lbl) $html .= "<th style=\"{$th}\">" . htmlspecialchars($lbl) . '</th>';
+    $html .= '</tr></thead><tbody>';
+    $tot = array_fill_keys(array_keys($cols), 0);
+    foreach ($rep as $pid => $r) {
+        $html .= '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:6px 8px;color:#374151">'
+               . htmlspecialchars(proyectoLabel($proyMap, (int)$pid, true)) . '</td>';
+        foreach ($cols as $k => $_) {
+            $html .= "<td style=\"{$td}\">" . ($k === $pctKey ? fmtPct($r[$k]) . '%' : lps($r[$k])) . '</td>';
+            $tot[$k] += $r[$k];
+        }
+        $html .= '</tr>';
+    }
+    $html .= '<tr style="background:#f0f5fc;font-weight:700;color:#0D3F6A"><td style="padding:6px 8px">Total</td>';
+    foreach ($cols as $k => $_) $html .= "<td style=\"{$td}\">" . ($k === $pctKey ? fmtPct($tot[$k]) . '%' : lps($tot[$k])) . '</td>';
+    return $html . '</tr></tbody></table></div>';
+}
+endif;
+
 $fSC = ($tipo === 'sc' || $tipo === 'proceso') ? loadFirmantes($pdo, 'sc') : [];
 $fOC = ($tipo === 'oc' || $tipo === 'proceso') ? loadFirmantes($pdo, 'oc') : [];
 $fOP = ($tipo === 'op' || $tipo === 'proceso') ? loadFirmantes($pdo, 'op') : [];
-$fPL = $tipo === 'pl' ? loadFirmantes($pdo, 'pl') : [];
-$fGV = $tipo === 'gv' ? loadFirmantes($pdo, 'gv') : [];
-if ($tipo === 'gv' && !empty($doc['firmante1_id'])) {
+$fPL = in_array($tipo, ['pl','plp']) ? loadFirmantes($pdo, 'pl') : [];
+$fGV = ($tipo === 'gv' || $tipo === 'gva') ? loadFirmantes($pdo, 'gv') : [];
+if (in_array($tipo, ['gv','gva']) && !empty($doc['firmante1_id'])) {
     $fGV = resolverFirmantesDinamicos($pdo, $fGV, $doc['firmante1_id']);
 }
 $fSG = $tipo === 'sg' ? loadFirmantes($pdo, 'sg') : [];
@@ -486,7 +579,7 @@ if ($tipo === 'sg' && !empty($doc['firmante1_id'])) {
     $fSG = resolverFirmantesDinamicos($pdo, $fSG, $doc['firmante1_id']);
 }
 $fPA = $tipo === 'pa' ? loadFirmantes($pdo, 'pa') : [];
-$fPB    = $tipo === 'pb'  ? loadFirmantes($pdo, 'pb')  : [];
+$fPB    = in_array($tipo, ['pb','pbp']) ? loadFirmantes($pdo, 'pb') : [];
 $fVAC   = $tipo === 'vac' ? loadFirmantes($pdo, 'vac') : [];
 $fPER   = $tipo === 'per' ? loadFirmantes($pdo, 'per') : [];
 $fCONST = in_array($tipo, ['trabajo','salario','referencia','tiempo']) ? loadFirmantes($pdo, 'constancia') : [];
@@ -520,7 +613,7 @@ body {
 }
 
 /* ── Page layout ─────────────────────────────────────────────────── */
-<?php $isLandscape = in_array($tipo, ['pl','pb']); ?>
+<?php $isLandscape = in_array($tipo, ['pl','pb','plp']); ?>
 .page {
   width: <?= $isLandscape ? '297mm' : '210mm' ?>;
   min-height: <?= $isLandscape ? '210mm' : '297mm' ?>;
@@ -721,6 +814,7 @@ table.items tfoot td {
   padding: 6px 10px;
   font-size: 8.5pt;
 }
+table.items tfoot td.r { text-align: right; font-family: 'Courier New', monospace; }
 table.items tfoot tr:last-child td {
   border-top: 2px solid #1B6BA8;
   font-weight: 700;
@@ -1011,6 +1105,10 @@ foreach ($detalle as $i => $d):
     </table>
   </div>
 
+  <?php $tieneDist = !empty($distV[$d['id']]);
+  if ($tieneDist) echo voucherDistTabla($repartosV[$d['id']], $proyMap,
+      ['pct_salario' => '%', 'total_bruto' => 'QUINCENA BRUTA', 'total_deducciones' => 'DEDUCCIONES', 'sueldo_neto' => 'NETO']); ?>
+
   <div class="amount-block" style="margin:14px 28px">
     <div>
       <div class="amount-label">Total a Pagar</div>
@@ -1020,7 +1118,7 @@ foreach ($detalle as $i => $d):
 
   <?php if (!empty($d['observacion'])): ?>
   <div style="margin:12px 28px 0;padding:10px 14px;border-left:3px solid #1B6BA8;background:#f0f7ff;border-radius:4px">
-    <div style="font-size:7.5pt;font-weight:700;color:#1B6BA8;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em">Observación</div>
+    <div class="obs-label" style="font-size:7.5pt;font-weight:700;color:#1B6BA8;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em">Observación</div>
     <div style="font-size:8.5pt;color:#374151"><?= htmlspecialchars($d['observacion']) ?></div>
   </div>
   <?php endif; ?>
@@ -1030,7 +1128,7 @@ foreach ($detalle as $i => $d):
       portador/a de la Tarjeta de Identidad número <strong><?= htmlspecialchars($d['identidad']) ?></strong><?php endif; ?>,
       declaro haber recibido la suma de <strong><?= lps($d['sueldo_neto']) ?></strong> correspondiente a la
       <?= $quinceNamePlv ?> del período <strong><?= htmlspecialchars($mesNombrePlv . ' ' . $doc['anio']) ?></strong>,
-      en conformidad con el detalle indicado.
+      en conformidad con el detalle<?= $tieneDist ? ' y la distribución por proyecto' : '' ?> indicado<?= $tieneDist ? 's' : '' ?>.
     </p>
     <div style="display:grid;grid-template-columns:1fr 180px;gap:20px;margin-top:8px">
       <div style="text-align:center">
@@ -1239,7 +1337,7 @@ foreach ($detalle as $i => $d):
     <table style="width:100%;border-collapse:collapse;font-size:9pt">
       <tbody>
         <tr style="border-bottom:1px solid #e2e8f0">
-          <td style="padding:7px 8px;color:#374151">Salario Mensual Base</td>
+          <td style="padding:7px 8px;color:#374151">Décimo Cuarto</td>
           <td style="padding:7px 8px;text-align:right;font-family:'Courier New',monospace;color:#374151"><?= lps($d['sueldo_mensual']) ?></td>
         </tr>
         <?php if ($d['deduccion'] > 0): ?>
@@ -1249,12 +1347,16 @@ foreach ($detalle as $i => $d):
         </tr>
         <?php endif; ?>
         <tr style="border-bottom:2px solid #16a34a;background:#f0fdf4">
-          <td style="padding:8px;font-weight:700;color:#15803d">Neto a Cobrar</td>
+          <td style="padding:8px;font-weight:700;color:#15803d">Total a Pagar (50%)</td>
           <td style="padding:8px;text-align:right;font-family:'Courier New',monospace;font-weight:800;color:#16a34a;font-size:11pt"><?= lps($d['neto']) ?></td>
         </tr>
       </tbody>
     </table>
   </div>
+
+  <?php $tieneDist = !empty($distV[$d['id']]);
+  if ($tieneDist) echo voucherDistTabla($repartosV[$d['id']], $proyMap,
+      ['porcentaje' => '%', 'sueldo_mensual' => 'BENEFICIO', 'deduccion' => 'DEDUCCIÓN', 'neto' => 'NETO']); ?>
 
   <div class="amount-block" style="margin:14px 28px">
     <div>
@@ -1268,7 +1370,7 @@ foreach ($detalle as $i => $d):
       Yo, <strong><?= htmlspecialchars(strtoupper($d['emp_nombre'])) ?></strong><?php if ($d['identidad'] ?? ''): ?>,
       portador/a de la Tarjeta de Identidad número <strong><?= htmlspecialchars($d['identidad']) ?></strong><?php endif; ?>,
       declaro haber recibido la suma de <strong><?= lps($d['neto']) ?></strong>
-      correspondiente al <em><?= htmlspecialchars($pbvLabel) ?></em> del año <strong><?= $doc['anio'] ?></strong>, en conformidad con lo indicado.
+      correspondiente al <em><?= htmlspecialchars($pbvLabel) ?></em> del año <strong><?= $doc['anio'] ?></strong>, en conformidad con lo indicado<?= $tieneDist ? ', incluida la distribución por proyecto' : '' ?>.
     </p>
     <div style="display:grid;grid-template-columns:1fr 180px;gap:20px;margin-top:8px">
       <div style="text-align:center">
@@ -1292,6 +1394,141 @@ foreach ($detalle as $i => $d):
 </div>
 <?php endforeach; ?>
 </div><!-- #all-pages pbv -->
+
+<?php elseif ($tipo === 'gva'): ?>
+<!-- ══ VOUCHER DE ALIMENTACIÓN DE VIAJE ══ -->
+<div class="page voucher">
+  <div class="top-bar"></div>
+
+  <!-- Header -->
+  <div class="doc-header">
+    <div class="org-block">
+      <?php if ($logoData): ?><img src="<?= $logoData ?>" class="org-logo" alt="<?= htmlspecialchars($org) ?>">
+      <?php else: ?><div class="org-logo-placeholder">A</div><?php endif; ?>
+      <div class="org-info">
+        <div class="org-name"><?= htmlspecialchars($org) ?></div>
+        <?php if ($orgFull): ?><div class="org-fullname"><?= htmlspecialchars($orgFull) ?></div><?php endif; ?>
+        <?php if ($orgDir): ?><div class="org-sub"><?= htmlspecialchars($orgDir) ?></div><?php endif; ?>
+        <?php if ($orgRtn): ?><div class="org-sub">RTN: <?= htmlspecialchars($orgRtn) ?></div><?php endif; ?>
+      </div>
+    </div>
+    <div class="doc-title-block">
+      <div class="doc-type">VOUCHER DE ALIMENTACIÓN</div>
+      <div class="doc-number" style="font-size:13pt"><?= htmlspecialchars($docNum) ?></div>
+      <div style="font-size:8pt;color:#64748b;margin-top:3px">
+        <?= fmtFecha($doc['fecha_salida']) ?> – <?= fmtFecha($doc['fecha_regreso']) ?>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meta: employee + trip info -->
+  <div class="meta-section" style="background:#f0f5fc;border-color:#dbeafe">
+    <div class="meta-grid cols-4">
+      <div class="meta-item" style="grid-column:1/3">
+        <div class="meta-label">Empleado</div>
+        <div class="meta-value" style="font-size:12pt;font-weight:800;color:#0D3F6A"><?= htmlspecialchars($doc['emp_nombre']) ?></div>
+      </div>
+      <?php if ($doc['emp_identidad']): ?>
+      <div class="meta-item">
+        <div class="meta-label">N° Identidad</div>
+        <div class="meta-value mono"><?= htmlspecialchars($doc['emp_identidad']) ?></div>
+      </div>
+      <?php endif; ?>
+      <?php if ($doc['emp_cargo']): ?>
+      <div class="meta-item">
+        <div class="meta-label">Cargo</div>
+        <div class="meta-value"><?= htmlspecialchars($doc['emp_cargo']) ?></div>
+      </div>
+      <?php endif; ?>
+      <div class="meta-item">
+        <div class="meta-label">Destino</div>
+        <div class="meta-value"><?= htmlspecialchars($doc['destino']) ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Fecha de Salida</div>
+        <div class="meta-value"><?= fmtFecha($doc['fecha_salida']) ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Fecha de Regreso</div>
+        <div class="meta-value"><?= fmtFecha($doc['fecha_regreso']) ?></div>
+      </div>
+      <?php if ($doc['proy_nombre']): ?>
+      <div class="meta-item">
+        <div class="meta-label">Proyecto</div>
+        <div class="meta-value"><?= htmlspecialchars($doc['proy_nombre']) ?></div>
+      </div>
+      <?php endif; ?>
+      <?php if ($doc['banco']): ?>
+      <div class="meta-item">
+        <div class="meta-label">Banco</div>
+        <div class="meta-value"><?= htmlspecialchars($doc['banco']) ?></div>
+      </div>
+      <?php endif; ?>
+      <?php if ($doc['cuenta_banco']): ?>
+      <div class="meta-item">
+        <div class="meta-label">No. Cuenta</div>
+        <div class="meta-value mono"><?= htmlspecialchars($doc['cuenta_banco']) ?></div>
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- Detail: single alimentación line -->
+  <div class="section-head">Detalle del Beneficio</div>
+  <div class="items-wrap" style="padding:0 28px;margin-top:10px">
+    <table style="width:100%;border-collapse:collapse;font-size:9pt">
+      <tbody>
+        <tr style="border-bottom:1px solid #e2e8f0">
+          <td style="padding:8px">Anticipo de Viaje de Referencia</td>
+          <td style="padding:8px;text-align:right;font-family:'Courier New',monospace;color:#374151"><?= htmlspecialchars($doc['numero']) ?></td>
+        </tr>
+        <tr style="border-bottom:1px solid #e2e8f0;background:#f0f5fc">
+          <td style="padding:8px;font-weight:700;color:#0D3F6A">Viáticos de Alimentación</td>
+          <td style="padding:8px;text-align:right;font-family:'Courier New',monospace;font-weight:700;color:#0D3F6A"><?= lps($doc['monto_alimentacion']) ?></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Amount highlight -->
+  <div class="amount-block" style="margin:14px 28px">
+    <div>
+      <div class="amount-label">Monto de Alimentación a Pagar</div>
+      <div class="amount-value"><?= lps($doc['monto_alimentacion']) ?></div>
+    </div>
+  </div>
+
+  <!-- Receipt / signature box -->
+  <div style="margin:18px 28px 0;padding:18px 20px;border:1.5px dashed #cbd5e1;border-radius:8px;background:#fafafa">
+    <p style="font-size:9pt;line-height:1.7;color:#374151;margin-bottom:16px">
+      Yo, <strong><?= htmlspecialchars(strtoupper($doc['emp_nombre'])) ?></strong><?php if ($doc['emp_identidad']): ?>,
+      portador/a de la Tarjeta de Identidad número <strong><?= htmlspecialchars($doc['emp_identidad']) ?></strong><?php endif; ?>,
+      declaro haber recibido la suma de <strong><?= lps($doc['monto_alimentacion']) ?></strong>
+      en concepto de <em>viáticos de alimentación</em> correspondientes al viaje a
+      <strong><?= htmlspecialchars($doc['destino']) ?></strong>
+      (<?= fmtFecha($doc['fecha_salida']) ?> – <?= fmtFecha($doc['fecha_regreso']) ?>),
+      según anticipo <strong><?= htmlspecialchars($doc['numero']) ?></strong>.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 180px;gap:20px;margin-top:8px">
+      <div style="text-align:center">
+        <div style="border-top:1.5px solid #64748b;margin-bottom:5px;margin-top:36px"></div>
+        <div style="font-size:8pt;font-weight:600"><?= htmlspecialchars($doc['emp_nombre']) ?></div>
+        <div style="font-size:7.5pt;color:#64748b">Firma y nombre del empleado</div>
+      </div>
+      <div>
+        <div style="font-size:8pt;color:#64748b;margin-bottom:4px">Fecha de recibo:</div>
+        <div style="border-bottom:1px solid #64748b;height:28px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spacer"></div>
+  <div class="doc-footer">
+    <div class="footer-left"><?= htmlspecialchars($org) ?><br>Generado el <span class="gen-ts"></span> — Sistema de Administración AHDECO</div>
+    <div class="footer-right">ALIMENTACIÓN — <?= htmlspecialchars($doc['numero']) ?></div>
+  </div>
+  <div class="bottom-bar"></div>
+</div>
 
 <?php elseif ($tipo === 'proceso'): ?>
 <div id="all-pages">
@@ -1398,7 +1635,13 @@ foreach ($detalle as $i => $d):
       </tbody>
       <tfoot>
         <tr><td colspan="5" style="text-align:right;padding-right:12px;color:#64748b;font-size:8pt">Subtotal</td><td class="r"><?= lps($proc_oc['subtotal']) ?></td></tr>
-        <tr><td colspan="5" style="text-align:right;padding-right:12px;color:#64748b;font-size:8pt">ISV (15%)</td><td class="r"><?= lps($proc_oc['impuestos']) ?></td></tr>
+        <?php if (($proc_oc['descuento']??0) > 0): ?>
+        <tr><td colspan="5" style="text-align:right;padding-right:12px;color:#64748b;font-size:8pt">Descuento</td><td class="r">-<?= lps($proc_oc['descuento']) ?></td></tr>
+        <?php endif; ?>
+        <tr><td colspan="5" style="text-align:right;padding-right:12px;color:#64748b;font-size:8pt">Impuesto ISV</td><td class="r"><?= lps($proc_oc['impuestos']) ?></td></tr>
+        <?php if (($proc_oc['impuesto_turismo']??0) > 0): ?>
+        <tr><td colspan="5" style="text-align:right;padding-right:12px;color:#64748b;font-size:8pt">Impuesto Turismo</td><td class="r"><?= lps($proc_oc['impuesto_turismo']) ?></td></tr>
+        <?php endif; ?>
         <tr><td colspan="5" style="text-align:right;padding-right:12px">TOTAL</td><td class="r"><?= lps($proc_oc['total']) ?></td></tr>
       </tfoot>
     </table>
@@ -1664,15 +1907,32 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
       <tfoot>
         <tr>
           <td colspan="5" style="text-align:right;padding-right:12px;font-size:8pt;color:#64748b">Subtotal</td>
-          <td class="r"><?= lps($doc['subtotal']) ?></td><td></td>
+          <td class="r"><?= lps($doc['subtotal']) ?></td>
+          <td></td>
         </tr>
+        <?php if (($doc['descuento']??0) > 0): ?>
         <tr>
-          <td colspan="5" style="text-align:right;padding-right:12px;font-size:8pt;color:#64748b">ISV (15%)</td>
-          <td class="r"><?= lps($doc['impuestos']) ?></td><td></td>
+          <td colspan="5" style="text-align:right;padding-right:12px;font-size:8pt;color:#64748b">Descuento</td>
+          <td class="r">-<?= lps($doc['descuento']) ?></td>
+          <td></td>
         </tr>
+        <?php endif; ?>
+        <tr>
+          <td colspan="5" style="text-align:right;padding-right:12px;font-size:8pt;color:#64748b">Impuesto ISV</td>
+          <td class="r"><?= lps($doc['impuestos']) ?></td>
+          <td></td>
+        </tr>
+        <?php if (($doc['impuesto_turismo']??0) > 0): ?>
+        <tr>
+          <td colspan="5" style="text-align:right;padding-right:12px;font-size:8pt;color:#64748b">Impuesto Turismo</td>
+          <td class="r"><?= lps($doc['impuesto_turismo']) ?></td>
+          <td></td>
+        </tr>
+        <?php endif; ?>
         <tr>
           <td colspan="5" style="text-align:right;padding-right:12px">TOTAL</td>
-          <td class="r"><?= lps($doc['total']) ?></td><td></td>
+          <td class="r"><?= lps($doc['total']) ?></td>
+          <td></td>
         </tr>
       </tfoot>
     </table>
@@ -1857,6 +2117,113 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
 
   <?= sigBlock($fPL, 'cols-3', 'margin-top:20px') ?>
 
+  <?php /* ══════════════ PLANILLA POR PROYECTO ══════════════ */ elseif ($tipo === 'plp'): ?>
+
+  <div class="meta-section">
+    <div class="meta-grid cols-4">
+      <div class="meta-item">
+        <div class="meta-label">Período</div>
+        <div class="meta-value"><?= $meses[$doc['mes'] - 1] . ' ' . $doc['anio'] ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Quincena</div>
+        <div class="meta-value"><?= $doc['quincena'] === 'primera' ? '1ª (1-15)' : '2ª (16-31)' ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Fecha de Pago</div>
+        <div class="meta-value"><?= fmtFecha($doc['fecha_pago'] ?? '') ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">No. Proyectos</div>
+        <div class="meta-value"><?= count($resumenProy) ?></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-head">Resumen por Proyecto</div>
+  <div class="items-wrap">
+    <table class="items" style="font-size:8pt">
+      <thead>
+        <tr>
+          <th>Proyecto</th><th class="r">Empleados</th><th class="r">Bruto</th><th class="r">Deducciones</th>
+          <th class="r">Neto a Pagar</th><th class="r">IHSS Pat.</th><th class="r">RAP Pat.</th><th class="r">Costo Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php $tR = ['total_bruto'=>0,'total_deducciones'=>0,'sueldo_neto'=>0,'ihss_patronal'=>0,'rap_patronal'=>0,'costo_total'=>0];
+        foreach ($resumenProy as $pid => $r): foreach ($tR as $k => $_) $tR[$k] += $r[$k]; ?>
+        <tr>
+          <td><?= htmlspecialchars(proyectoLabel($proyMap, $pid, true)) ?></td>
+          <td class="r"><?= $r['empleados'] ?></td>
+          <td class="r"><?= lps($r['total_bruto']) ?></td>
+          <td class="r" style="color:#dc2626"><?= lps($r['total_deducciones']) ?></td>
+          <td class="r" style="color:#16a34a;font-weight:600"><?= lps($r['sueldo_neto']) ?></td>
+          <td class="r" style="color:#b45309"><?= lps($r['ihss_patronal']) ?></td>
+          <td class="r" style="color:#b45309"><?= lps($r['rap_patronal']) ?></td>
+          <td class="r" style="font-weight:700"><?= lps($r['costo_total']) ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" style="font-weight:700;color:#0D3F6A">TOTALES</td>
+          <td class="r"><?= lps($tR['total_bruto']) ?></td>
+          <td class="r" style="color:#dc2626"><?= lps($tR['total_deducciones']) ?></td>
+          <td class="r" style="color:#16a34a"><?= lps($tR['sueldo_neto']) ?></td>
+          <td class="r" style="color:#b45309"><?= lps($tR['ihss_patronal']) ?></td>
+          <td class="r" style="color:#b45309"><?= lps($tR['rap_patronal']) ?></td>
+          <td class="r"><?= lps($tR['costo_total']) ?></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <?php foreach ($resumenProy as $pid => $r): ?>
+  <div class="section-head" style="margin-top:12px"><?= htmlspecialchars(proyectoLabel($proyMap, $pid, true)) ?></div>
+  <div class="items-wrap">
+    <table class="items" style="font-size:7.5pt">
+      <thead>
+        <tr>
+          <th style="width:2em">#</th><th>Empleado</th><th>Cargo</th>
+          <th class="r">% Sal.</th><th class="r">Bruto</th><th class="r">Deducciones</th><th class="r">Neto</th>
+          <th class="r">% Pat.</th><th class="r">IHSS Pat.</th><th class="r">RAP Pat.</th><th class="r">Costo Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php $i = 1; foreach ($detalle as $d): if (!isset($repartos[$d['id']][$pid])) continue; $x = $repartos[$d['id']][$pid]; ?>
+        <tr>
+          <td class="c"><?= $i++ ?></td>
+          <td><?= htmlspecialchars($d['empleado_nombre']) ?></td>
+          <td style="font-size:7pt;color:#64748b"><?= htmlspecialchars($d['cargo'] ?? '') ?></td>
+          <td class="r"><?= number_format($x['pct_salario'], 2) ?>%</td>
+          <td class="r"><?= lps($x['total_bruto']) ?></td>
+          <td class="r" style="color:#dc2626"><?= lps($x['total_deducciones']) ?></td>
+          <td class="r" style="color:#16a34a;font-weight:600"><?= lps($x['sueldo_neto']) ?></td>
+          <td class="r"><?= number_format($x['pct_patronal'], 2) ?>%</td>
+          <td class="r" style="color:#b45309"><?= lps($x['ihss_patronal']) ?></td>
+          <td class="r" style="color:#b45309"><?= lps($x['rap_patronal']) ?></td>
+          <td class="r" style="font-weight:600"><?= lps($x['costo_total']) ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4" style="font-weight:700;color:#0D3F6A">SUBTOTAL</td>
+          <td class="r"><?= lps($r['total_bruto']) ?></td>
+          <td class="r" style="color:#dc2626"><?= lps($r['total_deducciones']) ?></td>
+          <td class="r" style="color:#16a34a"><?= lps($r['sueldo_neto']) ?></td>
+          <td></td>
+          <td class="r" style="color:#b45309"><?= lps($r['ihss_patronal']) ?></td>
+          <td class="r" style="color:#b45309"><?= lps($r['rap_patronal']) ?></td>
+          <td class="r"><?= lps($r['costo_total']) ?></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <?php endforeach; ?>
+
+  <?= sigBlock($fPL, 'cols-3', 'margin-top:20px') ?>
+
   <?php /* ══════════════ REPORTE CREDIMPULSA ══════════════ */ elseif ($tipo === 'plc'): ?>
 
   <div class="meta-section">
@@ -1937,15 +2304,15 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
         <div class="meta-value"><?= htmlspecialchars($doc['emp_nombre']) ?></div>
       </div>
       <div class="meta-item">
-        <div class="meta-label">Destino</div>
+        <div class="meta-label"><?= $doc['tipo'] === 'compra' ? 'Concepto / Insumo a Comprar' : 'Destino' ?></div>
         <div class="meta-value"><?= htmlspecialchars($doc['destino']) ?></div>
       </div>
       <div class="meta-item">
-        <div class="meta-label">Fecha de Salida</div>
+        <div class="meta-label"><?= $doc['tipo'] === 'compra' ? 'Fecha del Anticipo' : 'Fecha de Salida' ?></div>
         <div class="meta-value"><?= fmtFecha($doc['fecha_salida']) ?></div>
       </div>
       <div class="meta-item">
-        <div class="meta-label">Fecha de Regreso</div>
+        <div class="meta-label"><?= $doc['tipo'] === 'compra' ? 'Fecha Límite de Liquidación' : 'Fecha de Regreso' ?></div>
         <div class="meta-value"><?= fmtFecha($doc['fecha_regreso']) ?></div>
       </div>
       <?php if ($doc['proy_nombre']): ?>
@@ -1955,10 +2322,10 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
       </div>
       <?php endif; ?>
       <div class="meta-item">
-        <div class="meta-label">Viáticos Anticipados</div>
+        <div class="meta-label">Monto del Anticipo</div>
         <div class="meta-value mono"><?= lps($doc['viaticos_anticipados']) ?></div>
       </div>
-      <?php if (!empty($doc['monto_alimentacion']) && $doc['monto_alimentacion'] > 0): ?>
+      <?php if ($doc['tipo'] !== 'compra' && !empty($doc['monto_alimentacion']) && $doc['monto_alimentacion'] > 0): ?>
       <div class="meta-item">
         <div class="meta-label">Alimentación</div>
         <div class="meta-value mono"><?= lps($doc['monto_alimentacion']) ?></div>
@@ -1966,7 +2333,7 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
       <?php endif; ?>
       <?php if ($doc['proposito']): ?>
       <div class="meta-item meta-full">
-        <div class="meta-label">Propósito del Viaje</div>
+        <div class="meta-label"><?= $doc['tipo'] === 'compra' ? 'Justificación de la Compra' : 'Propósito del Viaje' ?></div>
         <div class="meta-value"><?= htmlspecialchars($doc['proposito']) ?></div>
       </div>
       <?php endif; ?>
@@ -2014,7 +2381,7 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
 
   <?php if ($doc['gv_numero']): ?>
   <div class="ref-chain">
-    <span class="ref-pill">✈ <?= htmlspecialchars($doc['gv_numero']) ?></span>
+    <span class="ref-pill"><?= ($doc['gv_tipo'] ?? '') === 'compra' ? '📦' : '✈' ?> <?= htmlspecialchars($doc['gv_numero']) ?></span>
     <span class="ref-arrow">→</span>
     <span class="ref-pill ref-current">📄 <?= htmlspecialchars($doc['numero']) ?></span>
   </div>
@@ -2038,7 +2405,7 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
       <?php endif; ?>
       <?php if ($doc['gv_numero']): ?>
       <div class="meta-item">
-        <div class="meta-label">Anticipo de Viaje</div>
+        <div class="meta-label">Anticipo<?= ($doc['gv_tipo'] ?? '') === 'compra' ? ' de Compra' : ' de Viaje' ?></div>
         <div class="meta-value mono"><?= htmlspecialchars($doc['gv_numero']) ?> — <?= lps($doc['viaticos_anticipados']) ?></div>
       </div>
       <?php endif; ?>
@@ -2210,9 +2577,9 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
           <th style="width:2em">#</th>
           <th>Empleado</th>
           <th>Cargo</th>
-          <th class="r">Salario Mensual</th>
+          <th class="r">Décimo Cuarto</th>
           <th class="r">Deducción</th>
-          <th class="r">Neto a Pagar</th>
+          <th class="r">Total a Pagar (50%)</th>
           <th>Banco / Cuenta</th>
         </tr>
       </thead>
@@ -2241,6 +2608,95 @@ $sgHasAlim = ($tipo === 'sg' && ($doc['monto_alimentacion'] ?? 0) > 0);
       </tfoot>
     </table>
   </div>
+
+  <?= sigBlock($fPB, 'cols-3', 'margin-top:20px') ?>
+
+  <?php /* ══════════════ BENEFICIOS POR PROYECTO ══════════════ */ elseif ($tipo === 'pbp'): ?>
+
+  <div class="meta-section">
+    <div class="meta-grid cols-4">
+      <div class="meta-item">
+        <div class="meta-label">Tipo</div>
+        <div class="meta-value"><?= $pbTipos[$doc['tipo']] ?? ucfirst($doc['tipo']) ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Año</div>
+        <div class="meta-value"><?= $doc['anio'] ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Fecha de Pago</div>
+        <div class="meta-value"><?= fmtFecha($doc['fecha_pago'] ?? '') ?></div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">No. Proyectos</div>
+        <div class="meta-value"><?= count($resumenProy) ?></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-head">Resumen por Proyecto</div>
+  <div class="items-wrap">
+    <table class="items">
+      <thead>
+        <tr><th>Proyecto</th><th class="r">Empleados</th><th class="r">Beneficio</th><th class="r">Deducciones</th><th class="r">Neto a Pagar</th></tr>
+      </thead>
+      <tbody>
+        <?php $tRB = ['sueldo_mensual'=>0,'deduccion'=>0,'neto'=>0];
+        foreach ($resumenProy as $pid => $r): foreach ($tRB as $k => $_) $tRB[$k] += $r[$k]; ?>
+        <tr>
+          <td><?= htmlspecialchars(proyectoLabel($proyMap, $pid, true)) ?></td>
+          <td class="r"><?= $r['empleados'] ?></td>
+          <td class="r"><?= lps($r['sueldo_mensual']) ?></td>
+          <td class="r" style="color:#dc2626"><?= lps($r['deduccion']) ?></td>
+          <td class="r" style="color:#16a34a;font-weight:600"><?= lps($r['neto']) ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" style="font-weight:700;color:#0D3F6A">TOTALES</td>
+          <td class="r"><?= lps($tRB['sueldo_mensual']) ?></td>
+          <td class="r" style="color:#dc2626"><?= lps($tRB['deduccion']) ?></td>
+          <td class="r" style="color:#16a34a"><?= lps($tRB['neto']) ?></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <?php foreach ($resumenProy as $pid => $r): ?>
+  <div class="section-head" style="margin-top:12px"><?= htmlspecialchars(proyectoLabel($proyMap, $pid, true)) ?></div>
+  <div class="items-wrap">
+    <table class="items" style="font-size:8pt">
+      <thead>
+        <tr>
+          <th style="width:2em">#</th><th>Empleado</th><th>Cargo</th>
+          <th class="r">%</th><th class="r">Beneficio</th><th class="r">Deducción</th><th class="r">Neto</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php $i = 1; foreach ($detalle as $d): if (!isset($repartos[$d['id']][$pid])) continue; $x = $repartos[$d['id']][$pid]; ?>
+        <tr>
+          <td class="c"><?= $i++ ?></td>
+          <td><?= htmlspecialchars($d['emp_nombre']) ?></td>
+          <td style="font-size:7.5pt;color:#64748b"><?= htmlspecialchars($d['cargo'] ?? '') ?></td>
+          <td class="r"><?= number_format($x['porcentaje'], 2) ?>%</td>
+          <td class="r"><?= lps($x['sueldo_mensual']) ?></td>
+          <td class="r" style="color:#dc2626"><?= $x['deduccion'] > 0 ? lps($x['deduccion']) : '—' ?></td>
+          <td class="r" style="color:#16a34a;font-weight:600"><?= lps($x['neto']) ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4" style="font-weight:700;color:#0D3F6A">SUBTOTAL</td>
+          <td class="r"><?= lps($r['sueldo_mensual']) ?></td>
+          <td class="r" style="color:#dc2626"><?= lps($r['deduccion']) ?></td>
+          <td class="r" style="color:#16a34a"><?= lps($r['neto']) ?></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <?php endforeach; ?>
 
   <?= sigBlock($fPB, 'cols-3', 'margin-top:20px') ?>
 
@@ -3036,6 +3492,22 @@ $filename    = "AHDECO-{$safeNum}.pdf";
 const spinSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="animation:spin 1s linear infinite"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>';
 const dlSvg   = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
 
+// ── html2canvas + text-transform:uppercase pierde los acentos en
+// mayúsculas al usar letterRendering con letter-spacing (bug conocido
+// de html2canvas). Se resuelve escribiendo el texto ya en mayúsculas
+// (JS sí acentúa bien) y desactivando el transform solo durante la captura.
+const UPPERCASE_SELECTORS = '.doc-type, .doc-estado, .meta-label, .section-head, .amount-label, .letter-ref, .letter-to strong, .letter-p .emp-name, .obs-label';
+function fixAccentedUppercase(root) {
+  const nodes = root.querySelectorAll(UPPERCASE_SELECTORS);
+  const restore = [];
+  nodes.forEach(n => {
+    restore.push([n, n.textContent, n.style.textTransform]);
+    n.textContent = n.textContent.toLocaleUpperCase('es');
+    n.style.textTransform = 'none';
+  });
+  return () => restore.forEach(([n, text, tt]) => { n.textContent = text; n.style.textTransform = tt; });
+}
+
 // ── PDF download (single / proceso) ───────────────────────────────
 async function downloadPdf() {
   const btn     = document.getElementById('btn-download');
@@ -3051,6 +3523,7 @@ async function downloadPdf() {
   document.body.style.padding    = '0';
   el.style.margin                = '0';
   el.style.boxShadow             = 'none';
+  const restoreCase = fixAccentedUppercase(el);
 
   const opt = {
     margin:      0,
@@ -3063,6 +3536,7 @@ async function downloadPdf() {
   try {
     await html2pdf().set(opt).from(el).save();
   } finally {
+    restoreCase();
     document.body.style.background = '';
     document.body.style.padding    = '';
     el.style.margin                = '';

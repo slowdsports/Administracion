@@ -30,7 +30,11 @@ async function ajax(url, data = null, method = 'GET') {
     }
   }
   const res = await fetch(url, opts);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let body;
+    try { body = await res.json(); } catch (_) {}
+    throw new Error(body?.message || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -201,7 +205,7 @@ function bindAjaxForm(formId, onSuccess) {
         Toast.show(res.message || 'Error al guardar.', 'error');
       }
     } catch (err) {
-      Toast.show('Error de comunicación con el servidor.', 'error');
+      Toast.show(err.message || 'Error de comunicación con el servidor.', 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = orig; }
     }
@@ -277,6 +281,166 @@ async function deleteRecord(url, id, onDone) {
       Toast.show(res.message || 'No se pudo eliminar.', 'error');
     }
   } catch { Toast.show('Error de conexión.', 'error'); }
+}
+
+// ── Editor de distribución por proyecto (empleados / planillas) ───
+// Agrega filas [proyecto + %] a un <tbody>. Totales en celdas [data-tot="campo"]
+// y mensaje en [data-dist-msg] dentro de la misma tabla. El primer campo % se
+// copia a los demás mientras éstos no se editen a mano.
+// Opcional monto: { campo, base: () => L. } agrega una columna de monto que se
+// calcula desde el % de `campo` y, si se escribe el monto, recalcula el %.
+class DistEditor {
+  static labels = { pct_salario: '% Salario', pct_patronal: '% Patronal', porcentaje: '% Beneficio' };
+
+  constructor(tbody, { proyectos, campos, prefix = 'dist', onChange = null, monto = null }) {
+    Object.assign(this, { tbody, proyectos, campos, prefix, onChange, monto, n: 0 });
+    this.table = tbody.closest('table');
+  }
+
+  static pct(v) { return String(+(+v).toFixed(6)); }
+
+  // Recalcula los montos desde los % (p. ej. al cambiar el sueldo)
+  refreshMontos() {
+    if (!this.monto) return;
+    [...this.tbody.rows].forEach(tr => {
+      const p = tr.querySelector(`input[data-campo="${this.monto.campo}"]`);
+      tr.querySelector('input[data-monto]').value = (this.monto.base() * (parseFloat(p.value) || 0) / 100).toFixed(2);
+    });
+    this.update();
+  }
+
+  set(rows) {
+    this.tbody.innerHTML = '';
+    (rows || []).forEach(r => this.add(r, true));
+    this.update();
+  }
+
+  add(r = {}, silent = false) {
+    if (!silent && r.proyecto_id === undefined) {
+      const t = this.totals();
+      this.campos.forEach(c => r[c] = Math.max(0, +(100 - t[c]).toFixed(6)));
+    }
+    const i = this.n++, tr = document.createElement('tr');
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm no-search';
+    sel.name = `${this.prefix}[${i}][proyecto_id]`;
+    sel.add(new Option('— Proyecto —', ''));
+    this.proyectos.forEach(p => {
+      const activo = p.estado === 'activo';
+      if (!activo && String(p.id) !== String(r.proyecto_id)) return;
+      sel.add(new Option(`${p.codigo} — ${p.nombre}${activo ? '' : ' (' + p.estado + ')'}`, p.id));
+    });
+    sel.value = r.proyecto_id ?? '';
+    sel.addEventListener('change', () => this.update());
+    tr.insertCell().appendChild(sel);
+
+    const inputs = this.campos.map((c, k) => {
+      const inp = document.createElement('input');
+      Object.assign(inp, { type: 'number', step: 'any', min: '0', max: '100',
+        name: `${this.prefix}[${i}][${c}]`, className: 'form-control form-control-sm text-end font-mono' });
+      inp.dataset.campo = c;
+      inp.value = r[c] !== undefined ? DistEditor.pct(r[c]) : '';
+      if (k > 0 && r.proyecto_id !== undefined && parseFloat(r[c]) !== parseFloat(r[this.campos[0]])) inp.dataset.manual = '1';
+      tr.insertCell().appendChild(inp);
+      return inp;
+    });
+
+    // Columna de monto (solo informativa; el % es lo que se guarda)
+    let montoInp = null;
+    const pctMonto = this.monto ? inputs[this.campos.indexOf(this.monto.campo)] : null;
+    const syncMonto = () => {
+      if (montoInp) montoInp.value = (this.monto.base() * (parseFloat(pctMonto.value) || 0) / 100).toFixed(2);
+    };
+    if (this.monto) {
+      montoInp = document.createElement('input');
+      Object.assign(montoInp, { type: 'number', step: '0.01', min: '0',
+        className: 'form-control form-control-sm text-end font-mono' });
+      montoInp.dataset.monto = '1';
+      tr.insertCell().appendChild(montoInp);
+      syncMonto();
+    }
+
+    const propagar = () => inputs.slice(1).forEach(o => { if (!o.dataset.manual) o.value = inputs[0].value; });
+    inputs.forEach((inp, k) => inp.addEventListener('input', () => {
+      if (k === 0) propagar(); else inp.dataset.manual = '1';
+      syncMonto();
+      this.update();
+    }));
+    if (montoInp) montoInp.addEventListener('input', () => {
+      const base = this.monto.base();
+      if (base <= 0) { Toast.show('Ingrese primero el sueldo mensual.', 'error'); return; }
+      pctMonto.value = DistEditor.pct((parseFloat(montoInp.value) || 0) / base * 100);
+      if (pctMonto === inputs[0]) propagar();
+      this.update();
+    });
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn btn-sm btn-outline-danger py-0 px-2';
+    del.title = 'Quitar proyecto';
+    del.innerHTML = '<i class="fas fa-times"></i>';
+    del.addEventListener('click', () => { tr.remove(); this.update(); });
+    const tdDel = tr.insertCell();
+    tdDel.className = 'text-center';
+    tdDel.appendChild(del);
+
+    this.tbody.appendChild(tr);
+    if (!silent) this.update();
+    return tr;
+  }
+
+  rows() {
+    return [...this.tbody.rows].map(tr => {
+      const r = { proyecto_id: tr.querySelector('select').value };
+      tr.querySelectorAll('input[data-campo]').forEach(inp => r[inp.dataset.campo] = parseFloat(inp.value) || 0);
+      return r;
+    }).filter(r => r.proyecto_id);
+  }
+
+  totals() {
+    const t = Object.fromEntries(this.campos.map(c => [c, 0]));
+    this.rows().forEach(r => this.campos.forEach(c => t[c] += r[c]));
+    return t;
+  }
+
+  error() {
+    const rows = this.rows();
+    if (!rows.length) return '';
+    const ids = rows.map(r => r.proyecto_id);
+    if (new Set(ids).size !== ids.length) return 'Un proyecto aparece más de una vez.';
+    const t = this.totals();
+    for (const c of this.campos) {
+      if (Math.abs(t[c] - 100) > 0.001) return `${DistEditor.labels[c] || c} suma ${t[c].toFixed(2)}%; debe sumar 100%.`;
+    }
+    return '';
+  }
+
+  update() {
+    const t = this.totals(), hay = this.rows().length > 0;
+    this.campos.forEach(c => {
+      const cell = this.table.querySelector(`[data-tot="${c}"]`);
+      if (!cell) return;
+      cell.textContent = t[c].toFixed(2) + '%';
+      cell.classList.toggle('text-danger', hay && Math.abs(t[c] - 100) > 0.001);
+      cell.classList.toggle('text-success', hay && Math.abs(t[c] - 100) <= 0.001);
+    });
+    const totMonto = this.table.querySelector('[data-tot="monto"]');
+    if (totMonto && this.monto) {
+      let suma = 0;
+      [...this.tbody.rows].forEach(tr => {
+        if (tr.querySelector('select').value) suma += parseFloat(tr.querySelector('input[data-monto]').value) || 0;
+      });
+      totMonto.textContent = 'L. ' + suma.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      totMonto.title = 'Quincena: L. ' + this.monto.base().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    const msg = this.table.querySelector('[data-dist-msg]');
+    if (msg) {
+      const err = this.error();
+      msg.textContent = hay ? err : 'Sin proyectos asignados: se reporta 100% como "Sin proyecto".';
+      msg.className = err ? 'text-danger' : 'text-muted';
+    }
+    if (this.onChange) this.onChange(this);
+  }
 }
 
 // ── Motion: card stagger · count-up · button ripple ──────────────

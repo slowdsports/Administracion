@@ -42,6 +42,13 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
             ':direccion'      => trim($_POST['direccion'] ?? ''),
             ':activo'         => isset($_POST['activo']) ? 1 : 0,
         ];
+        // Distribución por defecto entre proyectos (se copia a cada planilla nueva)
+        $dist = parseDistribucion($_POST['dist'] ?? [], ['pct_salario', 'pct_patronal']);
+        $guardarDist = function (int $empId) use ($pdo, $dist): void {
+            $pdo->prepare("DELETE FROM empleado_proyectos WHERE empleado_id=?")->execute([$empId]);
+            $ins = $pdo->prepare("INSERT INTO empleado_proyectos (empleado_id,proyecto_id,pct_salario,pct_patronal) VALUES (?,?,?,?)");
+            foreach ($dist as $r) $ins->execute([$empId, $r['proyecto_id'], $r['pct_salario'], $r['pct_patronal']]);
+        };
         try {
             if ($eid) {
                 // Capturar sueldo anterior antes de actualizar
@@ -101,6 +108,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE pp.estado != 'pagada'
                       AND EXISTS (SELECT 1 FROM planilla_detalle WHERE periodo_id = pp.id AND empleado_id = ?)")
                     ->execute([$eid]);
+                $guardarDist($eid);
                 registrarAuditoria($pdo, 'UPDATE', 'empleados', $eid, 'Actualización empleado');
                 jsonOk([], 'Empleado actualizado correctamente.');
             } else {
@@ -125,6 +133,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("INSERT INTO historial_salarial (empleado_id, sueldo_anterior, sueldo_nuevo, cambio_pct, usuario_id) VALUES (?,0,?,100,?)")
                         ->execute([$newId, $d[':sueldo_mensual'], currentUser()['id'] ?? null]);
                 }
+                $guardarDist($newId);
                 registrarAuditoria($pdo, 'INSERT', 'empleados', $newId, 'Nuevo empleado');
                 jsonOk(['id' => $newId, 'codigo' => $codigo], "Empleado registrado. Código: {$codigo}");
             }
@@ -209,6 +218,13 @@ if ($action === 'editar' && $id) {
     $stmtH->execute([$id]);
     $histSalarial = $stmtH->fetchAll();
 }
+$empDist = [];
+if ($emp) {
+    $stmtD = $pdo->prepare("SELECT proyecto_id, pct_salario, pct_patronal FROM empleado_proyectos WHERE empleado_id=? ORDER BY id");
+    $stmtD->execute([$emp['id']]);
+    $empDist = $stmtD->fetchAll();
+}
+$proyectosDist = $action === 'list' ? [] : array_values(proyectosMap($pdo));
 
 // ── List ───────────────────────────────────────────────────────────
 $empleados = [];
@@ -612,6 +628,39 @@ include __DIR__ . '/includes/header.php';
         </div>
       </div>
 
+      <div class="form-section-title">Distribución por Proyecto</div>
+      <p class="text-muted mb-2" style="font-size:.8rem;">
+        Porcentaje del salario y del costo patronal (IHSS / RAP patronal) que paga cada proyecto.
+        Cada columna debe sumar 100%. Puede escribir el % o el monto de la quincena: el otro se calcula solo.
+        Se copia a cada planilla nueva y puede ajustarse en la planilla.
+      </p>
+      <div style="max-width:880px">
+        <table class="table table-sm align-middle mb-1" id="tbl-dist" style="font-size:.83rem;">
+          <thead>
+            <tr>
+              <th>Proyecto</th>
+              <th style="width:120px" class="text-end">% Salario</th>
+              <th style="width:120px" class="text-end">% Patronal</th>
+              <th style="width:150px" class="text-end">Monto Quincenal (L.)</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="dist-body"></tbody>
+          <tfoot>
+            <tr>
+              <td><span data-dist-msg></span></td>
+              <td class="text-end font-mono fw-bold" data-tot="pct_salario"></td>
+              <td class="text-end font-mono fw-bold" data-tot="pct_patronal"></td>
+              <td class="text-end font-mono fw-bold" data-tot="monto"></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="distEmp.add()">
+          <i class="fas fa-plus"></i> Agregar proyecto
+        </button>
+      </div>
+
       <div class="mt-4 d-flex gap-2">
         <button type="submit" class="btn-ahdeco"><i class="fas fa-save"></i> Guardar</button>
         <a href="?" class="btn btn-outline-secondary btn-sm">Cancelar</a>
@@ -723,8 +772,19 @@ document.getElementById('cat-nombre').addEventListener('keydown', e => {
 });
 ENDJS;
 else:
-$extraJs = <<<'ENDJS'
+$jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+$extraJs = 'const PROYECTOS = ' . json_encode($proyectosDist, $jsonFlags) . ";\n"
+         . 'const EMP_DIST = ' . json_encode($empDist, $jsonFlags) . ";\n";
+$extraJs .= <<<'ENDJS'
 bindAjaxForm('form-empleado', () => { setTimeout(() => location.href = 'empleados.php', 1200); });
+
+// Monto quincenal = sueldo mensual / 2 (misma base que al generar la planilla)
+const distEmp = new DistEditor(document.getElementById('dist-body'), {
+    proyectos: PROYECTOS, campos: ['pct_salario', 'pct_patronal'], prefix: 'dist',
+    monto: { campo: 'pct_salario', base: () => (parseFloat(document.getElementById('sueldo_mensual').value) || 0) / 2 }
+});
+distEmp.set(EMP_DIST);
+document.getElementById('sueldo_mensual').addEventListener('input', () => distEmp.refreshMontos());
 
 function toggleDed(type) {
     const chk = document.getElementById('ch_' + type);

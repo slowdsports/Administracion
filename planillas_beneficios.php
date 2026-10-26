@@ -16,6 +16,56 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
     $_act = $_POST['_action'] ?? '';
 
+    // El beneficio se reparte por defecto según el % de salario de cada empleado
+    $copiarDist = $pdo->prepare("INSERT INTO planilla_beneficios_detalle_proyectos (detalle_id,proyecto_id,porcentaje)
+        SELECT pbd.id, ep.proyecto_id, ep.pct_salario
+        FROM planilla_beneficios_detalle pbd JOIN empleado_proyectos ep ON ep.empleado_id = pbd.empleado_id
+        WHERE pbd.beneficio_id=? AND ep.pct_salario > 0");
+    $planillaEditable = function (int $pid) use ($pdo): void {
+        $s = $pdo->prepare("SELECT estado FROM planilla_beneficios WHERE id=?");
+        $s->execute([$pid]);
+        $estado = $s->fetchColumn();
+        if ($estado === false) jsonErr('Planilla no encontrada.');
+        if ($estado === 'pagada') jsonErr('La planilla ya está pagada; no se puede modificar la distribución.');
+    };
+
+    if ($_act === 'guardar_distribucion') {
+        $pid = (int)$_POST['id'];
+        $did = (int)$_POST['detalle_id'];
+        $planillaEditable($pid);
+        $chk = $pdo->prepare("SELECT id FROM planilla_beneficios_detalle WHERE id=? AND beneficio_id=?");
+        $chk->execute([$did, $pid]);
+        if (!$chk->fetch()) jsonErr('Fila de planilla no encontrada.');
+        $dist = parseDistribucion($_POST['dist'] ?? [], ['porcentaje']);
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE FROM planilla_beneficios_detalle_proyectos WHERE detalle_id=?")->execute([$did]);
+            $ins = $pdo->prepare("INSERT INTO planilla_beneficios_detalle_proyectos (detalle_id,proyecto_id,porcentaje) VALUES (?,?,?)");
+            foreach ($dist as $r) $ins->execute([$did, $r['proyecto_id'], $r['porcentaje']]);
+            $pdo->commit();
+            jsonOk([], 'Distribución guardada.');
+        } catch (\Exception $e) {
+            $pdo->rollBack();
+            jsonErr('Error: ' . $e->getMessage());
+        }
+    }
+
+    if ($_act === 'aplicar_distribucion') {
+        $pid = (int)$_POST['id'];
+        $planillaEditable($pid);
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("DELETE bp FROM planilla_beneficios_detalle_proyectos bp
+                JOIN planilla_beneficios_detalle pbd ON bp.detalle_id = pbd.id WHERE pbd.beneficio_id=?")->execute([$pid]);
+            $copiarDist->execute([$pid]);
+            $pdo->commit();
+            jsonOk([], 'Distribución de los empleados aplicada a la planilla.');
+        } catch (\Exception $e) {
+            $pdo->rollBack();
+            jsonErr('Error: ' . $e->getMessage());
+        }
+    }
+
     if ($_act === 'crear') {
         $tipo  = $_POST['tipo'] ?? '';
         $anio  = (int)$_POST['anio'];
@@ -47,6 +97,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->prepare("UPDATE planilla_beneficios SET total_bruto=?,total_neto=? WHERE id=?")
                 ->execute([$totBruto, $totNeto, $pid]);
+            $copiarDist->execute([$pid]);
             $pdo->commit();
             jsonOk(['id' => $pid], 'Planilla de beneficios creada.');
         } catch (\Exception $e) {
@@ -97,6 +148,7 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── CARGA ──────────────────────────────────────────────────────────
 $periodo = null;
 $detalle = [];
+$dist = $proyMap = $resumenProy = [];
 if ($action === 'ver' && $id) {
     $s = $pdo->prepare("SELECT * FROM planilla_beneficios WHERE id=?");
     $s->execute([$id]); $periodo = $s->fetch();
@@ -105,6 +157,9 @@ if ($action === 'ver' && $id) {
         FROM planilla_beneficios_detalle pbd JOIN empleados e ON pbd.empleado_id = e.id
         WHERE pbd.beneficio_id=? ORDER BY e.apellidos,e.nombre");
     $s2->execute([$id]); $detalle = $s2->fetchAll();
+    $dist    = cargarDistribucion($pdo, 'planilla_beneficios_detalle_proyectos', array_column($detalle, 'id'));
+    $proyMap = proyectosMap($pdo);
+    [, $resumenProy] = distribuirBeneficios($detalle, $dist);
 }
 
 $periodos = [];
@@ -180,6 +235,14 @@ include __DIR__ . '/includes/header.php';
       <?php endif; ?>
       <a href="<?= BASE_URL ?>print.php?tipo=pb&id=<?= $id ?>" target="_blank"
          class="btn btn-sm btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+      <a href="<?= BASE_URL ?>print.php?tipo=pbp&id=<?= $id ?>" target="_blank"
+         class="btn btn-sm btn-outline-secondary"><i class="fas fa-diagram-project"></i> Por Proyecto</a>
+      <?php if ($periodo['estado'] !== 'pagada'): ?>
+      <button class="btn btn-sm btn-outline-secondary" onclick="aplicarDistribucion(<?= $id ?>)"
+        title="Reemplaza la distribución de esta planilla por el % de salario configurado en cada empleado">
+        <i class="fas fa-rotate"></i> Aplicar distribución de empleados
+      </button>
+      <?php endif; ?>
       <?php if (in_array($periodo['estado'], ['aprobada','pagada'])): ?>
       <a href="<?= BASE_URL ?>print.php?tipo=pbv&id=<?= $id ?>" target="_blank"
          class="btn btn-sm btn-outline-primary"><i class="fas fa-file-zipper"></i> Vouchers</a>
@@ -203,6 +266,7 @@ include __DIR__ . '/includes/header.php';
           <th style="width:2.5rem">#</th>
           <th>Empleado</th>
           <th>Cargo</th>
+          <th>Proyectos</th>
           <th class="text-end">Salario Mensual</th>
           <th style="width:12rem">Deducción (L.)</th>
           <th class="text-end">Neto a Pagar</th>
@@ -212,8 +276,29 @@ include __DIR__ . '/includes/header.php';
         <?php foreach ($detalle as $i => $d): ?>
         <tr>
           <td class="text-center text-muted"><?= $i + 1 ?></td>
-          <td><?= htmlspecialchars($d['emp_nombre']) ?></td>
+          <td>
+            <?= htmlspecialchars($d['emp_nombre']) ?>
+            <a href="<?= BASE_URL ?>pdf_download.php?tipo=pbv&id=<?= $id ?>&emp_id=<?= $d['empleado_id'] ?>"
+               target="_blank" title="Descargar voucher PDF" class="ms-1" style="color:var(--text-2);font-size:.75rem">
+              <i class="fas fa-file-pdf"></i>
+            </a>
+          </td>
           <td style="font-size:.8rem;color:var(--text-2)"><?= htmlspecialchars($d['cargo'] ?? '') ?></td>
+          <td style="white-space:nowrap">
+            <?php foreach ($dist[$d['id']] ?? [] as $dp): ?>
+            <span class="badge bg-light text-dark border" style="font-size:.68rem"
+              title="<?= htmlspecialchars(proyectoLabel($proyMap, (int)$dp['proyecto_id'], true)) ?>">
+              <?= htmlspecialchars(proyectoLabel($proyMap, (int)$dp['proyecto_id'])) ?> <?= fmtPct($dp['porcentaje']) ?>%
+            </span><br>
+            <?php endforeach; ?>
+            <?php if (empty($dist[$d['id']])): ?>
+            <span class="text-muted" style="font-size:.72rem">Sin proyecto</span>
+            <?php endif; ?>
+            <?php if ($periodo['estado'] !== 'pagada'): ?>
+            <button type="button" class="btn btn-sm btn-link p-0 ms-1" title="Editar distribución"
+              onclick="editarDist(<?= $d['id'] ?>)"><i class="fas fa-pen" style="font-size:.7rem"></i></button>
+            <?php endif; ?>
+          </td>
           <td class="font-mono text-end"><?= lps($d['sueldo_mensual']) ?></td>
           <td>
             <input type="hidden" name="rows[<?= $i ?>][id]"             value="<?= $d['id'] ?>">
@@ -232,7 +317,7 @@ include __DIR__ . '/includes/header.php';
       </tbody>
       <tfoot>
         <tr style="font-weight:700;background:var(--surface-2)">
-          <td colspan="3" style="padding:8px 10px">TOTALES</td>
+          <td colspan="4" style="padding:8px 10px">TOTALES</td>
           <td class="font-mono text-end"   style="padding:8px 10px"><?= lps($periodo['total_bruto']) ?></td>
           <td class="font-mono text-danger text-end" style="padding:8px 10px" id="total-ded"><?= lps($periodo['total_deducciones']) ?></td>
           <td class="font-mono text-success text-end" style="padding:8px 10px" id="total-neto"><?= lps($periodo['total_neto']) ?></td>
@@ -248,6 +333,77 @@ include __DIR__ . '/includes/header.php';
     <span id="save-status" style="font-size:.82rem;color:var(--text-3)"></span>
   </div>
 </form>
+
+<!-- Resumen por proyecto -->
+<div class="card mt-3">
+  <div class="card-header"><i class="fas fa-diagram-project"></i> Resumen por Proyecto
+    <span class="text-muted ms-2" style="font-size:.78rem">(según lo guardado)</span></div>
+  <div class="card-body p-0" style="overflow-x:auto;">
+    <table class="table-ahdeco w-100" style="font-size:.85rem;">
+      <thead>
+        <tr><th>Proyecto</th><th class="text-center">Empleados</th><th class="text-end">Beneficio</th><th class="text-end">Deducciones</th><th class="text-end">Neto a Pagar</th></tr>
+      </thead>
+      <tbody>
+        <?php $trB = ['sueldo_mensual'=>0,'deduccion'=>0,'neto'=>0];
+        foreach ($resumenProy as $pid => $r): foreach ($trB as $k => $_) $trB[$k] += $r[$k]; ?>
+        <tr>
+          <td><?= htmlspecialchars(proyectoLabel($proyMap, $pid, true)) ?></td>
+          <td class="text-center"><?= $r['empleados'] ?></td>
+          <td class="font-mono text-end"><?= lps($r['sueldo_mensual']) ?></td>
+          <td class="font-mono text-end text-danger"><?= lps($r['deduccion']) ?></td>
+          <td class="font-mono text-end fw-bold text-success"><?= lps($r['neto']) ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+      <tfoot>
+        <tr style="font-weight:700;background:var(--surface-2)">
+          <td colspan="2" style="padding:8px 10px">TOTALES</td>
+          <td class="font-mono text-end" style="padding:8px 10px"><?= lps($trB['sueldo_mensual']) ?></td>
+          <td class="font-mono text-end text-danger" style="padding:8px 10px"><?= lps($trB['deduccion']) ?></td>
+          <td class="font-mono text-end text-success" style="padding:8px 10px"><?= lps($trB['neto']) ?></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- Modal: Distribución por proyecto de un empleado -->
+<div class="modal fade" id="modal-dist" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-diagram-project"></i> Distribución por Proyecto — <span id="dist-emp"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-2" style="font-size:.8rem;">
+          Porcentaje del beneficio que paga cada proyecto (por ejemplo, según los meses que el empleado trabajó en cada uno durante el año). Solo afecta a esta planilla.
+        </p>
+        <table class="table table-sm align-middle mb-1" style="font-size:.83rem;">
+          <thead>
+            <tr><th>Proyecto</th><th style="width:130px" class="text-end">% Beneficio</th><th style="width:50px"></th></tr>
+          </thead>
+          <tbody id="dist-body"></tbody>
+          <tfoot>
+            <tr>
+              <td><span data-dist-msg></span></td>
+              <td class="text-end font-mono fw-bold" data-tot="porcentaje"></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="distPb.add()">
+          <i class="fas fa-plus"></i> Agregar proyecto
+        </button>
+        <div id="dist-preview" class="mt-3" style="font-size:.78rem;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn-ahdeco" onclick="guardarDist()"><i class="fas fa-save"></i> Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
 <?php endif; ?>
 
 <!-- Modal: Nueva Planilla -->
@@ -351,5 +507,75 @@ async function crearPlanillaPb() {
   } else { Toast.show(r.message, 'error'); }
 }
 JS;
+
+if ($periodo) {
+    $pbFilas = [];
+    foreach ($detalle as $i => $d) {
+        $pbFilas[$d['id']] = ['nombre' => $d['emp_nombre'], 'idx' => $i, 'dist' => $dist[$d['id']] ?? []];
+    }
+    $jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+    $extraJs .= 'const PB_ID = ' . (int)$periodo['id'] . ";\n"
+              . 'const PROYECTOS = ' . json_encode(array_values($proyMap), $jsonFlags) . ";\n"
+              . 'const PB_FILAS = ' . json_encode($pbFilas ?: new stdClass, $jsonFlags) . ";\n";
+    $extraJs .= <<<'JS'
+const escH = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let distDid = 0, distModal = null, detalleDirty = false;
+document.querySelectorAll('.ded-input').forEach(i => i.addEventListener('input', () => detalleDirty = true));
+
+const distPb = new DistEditor(document.getElementById('dist-body'), {
+  proyectos: PROYECTOS, campos: ['porcentaje'], onChange: previewDist
+});
+
+function editarDist(did) {
+  distDid = did;
+  document.getElementById('dist-emp').textContent = PB_FILAS[did].nombre;
+  distPb.set(PB_FILAS[did].dist);
+  distModal = distModal || new bootstrap.Modal(document.getElementById('modal-dist'));
+  distModal.show();
+}
+
+// Usa los valores en pantalla (incluye deducciones aún no guardadas)
+function previewDist(ed) {
+  const f = PB_FILAS[distDid], el = document.getElementById('dist-preview');
+  const rows = ed.rows();
+  if (!f || !rows.length) { el.innerHTML = ''; return; }
+  const inp = document.querySelector(`.ded-input[data-idx="${f.idx}"]`);
+  const sueldo = parseFloat(inp?.dataset.sueldo) || 0, ded = parseFloat(inp?.value) || 0;
+  const cod = id => (PROYECTOS.find(p => String(p.id) === String(id)) || {}).codigo || '';
+  el.innerHTML = '<table class="table table-sm mb-0"><thead><tr><th>Proyecto</th>'
+    + '<th class="text-end">Beneficio</th><th class="text-end">Neto</th></tr></thead><tbody>'
+    + rows.map(r => `<tr><td>${escH(cod(r.proyecto_id))}</td>`
+      + `<td class="text-end font-mono">${fmt(sueldo * r.porcentaje / 100)}</td>`
+      + `<td class="text-end font-mono">${fmt(Math.max(0, sueldo - ded) * r.porcentaje / 100)}</td></tr>`).join('')
+    + '</tbody></table>';
+}
+
+async function guardarDist() {
+  const err = distPb.error();
+  if (err) { Toast.show(err, 'error'); return; }
+  if (detalleDirty && !confirm('Hay deducciones sin guardar. Si continúa se perderán. ¿Continuar?')) return;
+  const fd = new FormData();
+  fd.append('csrf_token', document.querySelector('[name=csrf_token]')?.value || '');
+  fd.append('_action', 'guardar_distribucion');
+  fd.append('id', PB_ID);
+  fd.append('detalle_id', distDid);
+  distPb.rows().forEach((r, i) => Object.entries(r).forEach(([k, v]) => fd.append(`dist[${i}][${k}]`, v)));
+  const r = await post('planillas_beneficios.php', fd);
+  if (r.success) { Toast.show(r.message, 'success'); setTimeout(() => location.reload(), 600); }
+  else Toast.show(r.message, 'error');
+}
+
+async function aplicarDistribucion(pid) {
+  if (!confirm('Se reemplazará la distribución de TODOS los empleados de esta planilla por el % de salario configurado en su expediente. ¿Continuar?')) return;
+  const fd = new FormData();
+  fd.append('csrf_token', document.querySelector('[name=csrf_token]')?.value || '');
+  fd.append('_action', 'aplicar_distribucion');
+  fd.append('id', pid);
+  const r = await post('planillas_beneficios.php', fd);
+  if (r.success) { Toast.show(r.message, 'success'); setTimeout(() => location.reload(), 800); }
+  else Toast.show(r.message, 'error');
+}
+JS;
+}
 include __DIR__ . '/includes/footer.php';
 ?>

@@ -30,19 +30,21 @@ if (isAjax() && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $ocId  = (int)($_POST['id'] ?? 0);
         $items = json_decode($_POST['items'] ?? '[]', true);
         $sub   = array_sum(array_column($items,'total'));
-        $imp   = (float)$_POST['impuestos'];
-        $total = $sub + $imp;
+        $desc  = (float)($_POST['descuento'] ?? 0);
+        $imp   = (float)($_POST['impuestos'] ?? 0);
+        $impT  = (float)($_POST['impuesto_turismo'] ?? 0);
+        $total = $sub - $desc + $imp + $impT;
         $pdo->beginTransaction();
         try {
             if ($ocId) {
-                $pdo->prepare("UPDATE ordenes_compra SET cotizacion_id=?,solicitud_id=?,proveedor_id=?,fecha=?,fecha_entrega=?,condiciones_pago=?,lugar_entrega=?,subtotal=?,impuestos=?,total=?,proyecto_id=?,notas=? WHERE id=?")
-                    ->execute([$_POST['cotizacion_id']?:null,$_POST['solicitud_id']?:null,$_POST['proveedor_id'],$_POST['fecha'],$_POST['fecha_entrega']?:null,$_POST['condiciones_pago']??'',$_POST['lugar_entrega']??'',$sub,$imp,$total,$_POST['proyecto_id']?:null,$_POST['notas']??'',$ocId]);
+                $pdo->prepare("UPDATE ordenes_compra SET cotizacion_id=?,solicitud_id=?,proveedor_id=?,fecha=?,fecha_entrega=?,condiciones_pago=?,lugar_entrega=?,subtotal=?,descuento=?,impuestos=?,impuesto_turismo=?,total=?,proyecto_id=?,notas=? WHERE id=?")
+                    ->execute([$_POST['cotizacion_id']?:null,$_POST['solicitud_id']?:null,$_POST['proveedor_id'],$_POST['fecha'],$_POST['fecha_entrega']?:null,$_POST['condiciones_pago']??'',$_POST['lugar_entrega']??'',$sub,$desc,$imp,$impT,$total,$_POST['proyecto_id']?:null,$_POST['notas']??'',$ocId]);
                 $pdo->prepare("DELETE FROM ordenes_compra_detalle WHERE orden_id=?")->execute([$ocId]);
             } else {
                 $num = generarNumero($pdo,'ordenes_compra','numero',getConfig($pdo,'prefijo_oc','OC'));
-                $pdo->prepare("INSERT INTO ordenes_compra (numero,cotizacion_id,solicitud_id,proveedor_id,fecha,fecha_entrega,condiciones_pago,lugar_entrega,subtotal,impuestos,total,proyecto_id,notas,estado,aprobador_id)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'emitida',?)")
-                    ->execute([$num,$_POST['cotizacion_id']?:null,$_POST['solicitud_id']?:null,$_POST['proveedor_id'],$_POST['fecha'],$_POST['fecha_entrega']?:null,$_POST['condiciones_pago']??'',$_POST['lugar_entrega']??'',$sub,$imp,$total,$_POST['proyecto_id']?:null,$_POST['notas']??'',currentUser()['id']]);
+                $pdo->prepare("INSERT INTO ordenes_compra (numero,cotizacion_id,solicitud_id,proveedor_id,fecha,fecha_entrega,condiciones_pago,lugar_entrega,subtotal,descuento,impuestos,impuesto_turismo,total,proyecto_id,notas,estado,aprobador_id)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'emitida',?)")
+                    ->execute([$num,$_POST['cotizacion_id']?:null,$_POST['solicitud_id']?:null,$_POST['proveedor_id'],$_POST['fecha'],$_POST['fecha_entrega']?:null,$_POST['condiciones_pago']??'',$_POST['lugar_entrega']??'',$sub,$desc,$imp,$impT,$total,$_POST['proyecto_id']?:null,$_POST['notas']??'',currentUser()['id']]);
                 $ocId = $pdo->lastInsertId();
                 if ($_POST['cotizacion_id']) $pdo->prepare("UPDATE solicitud_compra SET estado='adjudicada' WHERE id=(SELECT solicitud_id FROM cotizaciones WHERE id=?)")->execute([$_POST['cotizacion_id']]);
             }
@@ -127,14 +129,15 @@ include __DIR__ . '/includes/header.php';
 <?php if ($action==='list'): ?>
 <div class="card"><div class="card-body p-0">
   <table id="tbl-oc" class="table-ahdeco w-100">
-    <thead><tr><th>Número</th><th>Fecha</th><th>Proveedor</th><th>Subtotal</th><th>Impuestos</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>Número</th><th>Fecha</th><th>Proveedor</th><th>Subtotal</th><th>Descuento</th><th>Impuestos</th><th>Total</th><th>Estado</th><th></th></tr></thead>
     <tbody>
       <?php foreach($lista as $r): ?>
       <tr>
         <td class="font-mono"><?= $r['numero'] ?></td><td><?= fmtFecha($r['fecha']) ?></td>
         <td><?= htmlspecialchars($r['prov_nombre']) ?></td>
         <td class="font-mono"><?= lps($r['subtotal']) ?></td>
-        <td class="font-mono"><?= lps($r['impuestos']) ?></td>
+        <td class="font-mono"><?= lps($r['descuento'] ?? 0) ?></td>
+        <td class="font-mono"><?= lps(($r['impuestos']??0) + ($r['impuesto_turismo']??0)) ?></td>
         <td class="font-mono fw-bold"><?= lps($r['total']) ?></td>
         <td><?= estadoBadge($r['estado']) ?></td>
         <td>
@@ -146,7 +149,7 @@ include __DIR__ . '/includes/header.php';
         </td>
       </tr>
       <?php endforeach; ?>
-      <?php if(!$lista): ?><tr><td colspan="8" class="text-center text-muted py-4">Sin órdenes de compra</td></tr><?php endif; ?>
+      <?php if(!$lista): ?><tr><td colspan="9" class="text-center text-muted py-4">Sin órdenes de compra</td></tr><?php endif; ?>
     </tbody>
   </table>
 </div></div>
@@ -244,7 +247,9 @@ include __DIR__ . '/includes/header.php';
       </tbody>
       <tfoot>
         <tr><td colspan="5" class="text-end">Subtotal:</td><td class="font-mono"><?= lps($oc['subtotal']) ?></td><td></td></tr>
-        <tr><td colspan="5" class="text-end">Impuestos (ISV):</td><td class="font-mono"><?= lps($oc['impuestos']) ?></td><td></td></tr>
+        <tr><td colspan="5" class="text-end">Descuento:</td><td class="font-mono"><?= lps($oc['descuento'] ?? 0) ?></td><td></td></tr>
+        <tr><td colspan="5" class="text-end">Impuesto ISV:</td><td class="font-mono"><?= lps($oc['impuestos']) ?></td><td></td></tr>
+        <tr><td colspan="5" class="text-end">Impuesto Turismo:</td><td class="font-mono"><?= lps($oc['impuesto_turismo'] ?? 0) ?></td><td></td></tr>
         <tr><td colspan="5" class="text-end fw-bold">TOTAL:</td><td class="font-mono fw-bold"><?= lps($oc['total']) ?></td><td></td></tr>
       </tfoot>
     </table>
@@ -317,7 +322,24 @@ include __DIR__ . '/includes/header.php';
         </tbody>
         <tfoot>
           <tr><td colspan="5" class="text-end">Subtotal:</td><td class="font-mono" id="grand-total">L. 0.00</td><td colspan="2"></td></tr>
-          <tr><td colspan="5" class="text-end">ISV (15%):</td><td class="font-mono"><input type="number" name="impuestos" id="imp" class="form-control form-control-sm text-end" step="0.01" min="0" value="0" oninput="updateTotal()"></td><td colspan="2"></td></tr>
+          <tr>
+            <td colspan="4" class="text-end">Descuento:</td>
+            <td><div class="input-group input-group-sm"><input type="number" id="desc-pct" class="form-control text-end" step="0.01" min="0" value="0" oninput="onPctChange('desc')"><span class="input-group-text">%</span></div></td>
+            <td><input type="number" name="descuento" id="desc-monto" class="form-control form-control-sm text-end font-mono" step="0.01" min="0" value="0" oninput="onMontoEdit('desc')"></td>
+            <td colspan="2"></td>
+          </tr>
+          <tr>
+            <td colspan="4" class="text-end">Impuesto ISV:</td>
+            <td><div class="input-group input-group-sm"><input type="number" id="isv-pct" class="form-control text-end" step="0.01" min="0" value="15" oninput="onPctChange('isv')"><span class="input-group-text">%</span></div></td>
+            <td><input type="number" name="impuestos" id="isv-monto" class="form-control form-control-sm text-end font-mono" step="0.01" min="0" value="0" oninput="onMontoEdit('isv')"></td>
+            <td colspan="2"></td>
+          </tr>
+          <tr>
+            <td colspan="4" class="text-end">Impuesto Turismo:</td>
+            <td><div class="input-group input-group-sm"><input type="number" id="tur-pct" class="form-control text-end" step="0.01" min="0" value="0" oninput="onPctChange('tur')"><span class="input-group-text">%</span></div></td>
+            <td><input type="number" name="impuesto_turismo" id="tur-monto" class="form-control form-control-sm text-end font-mono" step="0.01" min="0" value="0" oninput="onMontoEdit('tur')"></td>
+            <td colspan="2"></td>
+          </tr>
           <tr><td colspan="5" class="text-end fw-bold">TOTAL:</td><td class="font-mono fw-bold" id="total-final">L. 0.00</td><td colspan="2"></td></tr>
         </tfoot>
       </table>
@@ -335,14 +357,31 @@ include __DIR__ . '/includes/header.php';
 $cuentasJson = json_encode(array_map(fn($c)=>['id'=>$c['id'],'codigo'=>$c['codigo'],'nombre'=>$c['nombre']],$cuentas));
 $extraJs = "
 initDataTable('#tbl-oc');
+const taxDirty = {desc:false, isv:false, tur:false};
 recalcTotals();
 updateTotal();
 
+function calcSubtotal(){
+  return [...document.querySelectorAll('#tbody-items .row-total')].reduce((s,e)=>s+parseFloat(e.value||0),0);
+}
+function recomputeTaxes(){
+  const sub = calcSubtotal();
+  if(!taxDirty.desc) document.getElementById('desc-monto').value = (sub*parseFloat(document.getElementById('desc-pct').value||0)/100).toFixed(2);
+  const descMonto = parseFloat(document.getElementById('desc-monto')?.value||0);
+  const base = Math.max(sub-descMonto,0);
+  if(!taxDirty.isv) document.getElementById('isv-monto').value = (base*parseFloat(document.getElementById('isv-pct').value||0)/100).toFixed(2);
+  if(!taxDirty.tur) document.getElementById('tur-monto').value = (base*parseFloat(document.getElementById('tur-pct').value||0)/100).toFixed(2);
+}
+function onPctChange(key){ taxDirty[key]=false; updateTotal(); }
+function onMontoEdit(key){ taxDirty[key]=true; updateTotal(); }
 function updateTotal(){
-  const sub  = [...document.querySelectorAll('#tbody-items .row-total')].reduce((s,e)=>s+parseFloat(e.value||0),0);
-  const imp  = parseFloat(document.getElementById('imp')?.value||0);
+  recomputeTaxes();
+  const sub  = calcSubtotal();
+  const desc = parseFloat(document.getElementById('desc-monto')?.value||0);
+  const isv  = parseFloat(document.getElementById('isv-monto')?.value||0);
+  const tur  = parseFloat(document.getElementById('tur-monto')?.value||0);
   const tot  = document.getElementById('total-final');
-  if(tot) tot.textContent = lps(sub+imp);
+  if(tot) tot.textContent = lps(sub-desc+isv+tur);
 }
 const origR = window.recalcTotals;
 window.recalcTotals = function(){ if(origR) origR(); updateTotal(); };
